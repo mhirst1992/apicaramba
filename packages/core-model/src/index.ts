@@ -1,4 +1,5 @@
 import { promises as fs } from 'node:fs'
+import { createRequire } from 'node:module'
 import path from 'node:path'
 import type { HttpMethod, WorkspaceSnapshot, OperationSummary } from '@apicaramba/shared-types'
 
@@ -18,9 +19,33 @@ interface OpenApiOperation {
 
 interface OpenApiDocument {
 	openapi?: unknown
+	swagger?: unknown
+	definitions?: unknown
+	securityDefinitions?: unknown
+	schemes?: unknown
+	consumes?: unknown
+	produces?: unknown
 	info?: OpenApiInfo
 	paths?: Record<string, Record<string, OpenApiOperation> | undefined>
 }
+
+interface SwaggerConversionResult {
+	openapi: unknown
+}
+
+interface Swagger2OpenApiConverter {
+	convertObj: (
+		source: unknown,
+		options: {
+			patch?: boolean
+			warnOnly?: boolean
+			resolve?: boolean
+		}
+	) => Promise<SwaggerConversionResult>
+}
+
+const require = createRequire(import.meta.url)
+const swaggerConverter = require('swagger2openapi') as Swagger2OpenApiConverter
 
 export async function loadWorkspaceSnapshot(rootPath: string): Promise<WorkspaceSnapshot> {
 	const absoluteRoot = path.resolve(rootPath)
@@ -70,7 +95,8 @@ async function findOpenApiFiles(rootPath: string): Promise<string[]> {
 
 async function buildApiSummary(workspaceRoot: string, openapiAbsolutePath: string) {
 	const raw = await fs.readFile(openapiAbsolutePath, 'utf8')
-	const document = JSON.parse(raw) as OpenApiDocument
+	const parsedDocument = JSON.parse(raw) as OpenApiDocument
+	const document = await normalizeToOpenApi3(parsedDocument, openapiAbsolutePath)
 
 	const openapiVersion = typeof document.openapi === 'string' ? document.openapi : ''
 	if (!openapiVersion.startsWith('3.')) {
@@ -95,6 +121,39 @@ async function buildApiSummary(workspaceRoot: string, openapiAbsolutePath: strin
 		version: typeof document.info?.version === 'string' ? document.info.version : null,
 		operationCount: operations.length,
 		operations
+	}
+}
+
+async function normalizeToOpenApi3(
+	document: OpenApiDocument,
+	openapiAbsolutePath: string
+): Promise<OpenApiDocument> {
+	const openapiVersion = typeof document.openapi === 'string' ? document.openapi : ''
+	if (openapiVersion.startsWith('3.')) {
+		return document
+	}
+
+	const swaggerVersion = typeof document.swagger === 'string' ? document.swagger : ''
+	if (swaggerVersion.length === 0) {
+		throw new Error(`Unsupported OpenAPI version in ${openapiAbsolutePath}`)
+	}
+
+	const sourceForConversion = coerceSwaggerVersionForConversion(document)
+
+	try {
+		const converted = await swaggerConverter.convertObj(sourceForConversion, {
+			patch: true,
+			warnOnly: true,
+			resolve: false
+		})
+
+		if (!isObject(converted.openapi)) {
+			throw new Error('Conversion result was empty.')
+		}
+
+		return converted.openapi as OpenApiDocument
+	} catch {
+		throw new Error(`Failed to convert Swagger 2.0 document in ${openapiAbsolutePath}`)
 	}
 }
 
@@ -147,4 +206,31 @@ function normalizeRelativePath(value: string): string {
 function toId(input: string): string {
 	const normalized = input.replaceAll('\\', '/').toLowerCase()
 	return normalized.replace(/[^a-z0-9/._-]+/g, '-').replaceAll('/', '__')
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+	return typeof value === 'object' && value !== null
+}
+
+function coerceSwaggerVersionForConversion(document: OpenApiDocument): OpenApiDocument {
+	const swaggerVersion = typeof document.swagger === 'string' ? document.swagger : ''
+	if (!swaggerVersion.startsWith('3.')) {
+		return document
+	}
+
+	const looksLikeSwagger2 =
+		document.definitions !== undefined ||
+		document.securityDefinitions !== undefined ||
+		document.schemes !== undefined ||
+		document.consumes !== undefined ||
+		document.produces !== undefined
+
+	if (!looksLikeSwagger2) {
+		return document
+	}
+
+	return {
+		...document,
+		swagger: '2.0'
+	}
 }
