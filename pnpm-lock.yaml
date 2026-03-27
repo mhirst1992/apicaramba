@@ -38,6 +38,12 @@ importers:
       '@apicaramba/shared-types':
         specifier: workspace:*
         version: link:../../packages/shared-types
+      '@apicaramba/validation':
+        specifier: workspace:*
+        version: link:../../packages/validation
+      '@apidevtools/swagger-parser':
+        specifier: ^10.1.0
+        version: 10.1.1(openapi-types@12.1.3)
     devDependencies:
       '@tailwindcss/vite':
         specifier: ^4.0.0

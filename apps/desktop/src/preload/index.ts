@@ -1,5 +1,9 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { OpenWorkspaceResult } from '@apicaramba/shared-types'
+import type {
+  OpenWorkspaceResult,
+  ValidateOpenApiRequest,
+  ValidateOpenApiResult
+} from '@apicaramba/shared-types'
 
 /**
  * Exposes a minimal, safe API surface to the renderer via contextBridge.
@@ -14,6 +18,7 @@ export interface AppBridge {
   }
   platform: NodeJS.Platform
   openWorkspace: () => Promise<OpenWorkspaceResult>
+  validateOpenApi: (request: ValidateOpenApiRequest) => Promise<ValidateOpenApiResult>
 }
 
 const bridge: AppBridge = {
@@ -23,7 +28,9 @@ const bridge: AppBridge = {
     electron: process.versions.electron
   },
   platform: process.platform,
-  openWorkspace: () => ipcRenderer.invoke('workspace:open') as Promise<OpenWorkspaceResult>
+  openWorkspace: () => ipcRenderer.invoke('workspace:open') as Promise<OpenWorkspaceResult>,
+  validateOpenApi: (request: ValidateOpenApiRequest) =>
+    ipcRenderer.invoke('openapi:validate', request) as Promise<ValidateOpenApiResult>
 }
 
 contextBridge.exposeInMainWorld('appBridge', bridge)
