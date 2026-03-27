@@ -1,11 +1,17 @@
 import React from 'react'
-import type { WorkspaceSnapshot, ApiSummary } from '@apicaramba/shared-types'
+import type {
+  WorkspaceSnapshot,
+  ApiSummary,
+  ValidateOpenApiResult
+} from '@apicaramba/shared-types'
 
 export default function App(): React.JSX.Element {
   const [snapshot, setSnapshot] = React.useState<WorkspaceSnapshot | null>(null)
   const [selectedApiId, setSelectedApiId] = React.useState<string | null>(null)
   const [loading, setLoading] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
+  const [validationResult, setValidationResult] = React.useState<ValidateOpenApiResult | null>(null)
+  const [validating, setValidating] = React.useState(false)
 
   const selectedApi = React.useMemo(() => {
     if (!snapshot || !selectedApiId) {
@@ -32,8 +38,28 @@ export default function App(): React.JSX.Element {
 
       setSnapshot(result.snapshot)
       setSelectedApiId(result.snapshot.apis[0]?.id ?? null)
+      setValidationResult(null)
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function onValidateSelectedApi(): Promise<void> {
+    if (!snapshot || !selectedApi) {
+      return
+    }
+
+    setValidating(true)
+    setValidationResult(null)
+
+    try {
+      const result = await window.appBridge.validateOpenApi({
+        workspaceRootPath: snapshot.workspace.rootPath,
+        openapiRelativePath: selectedApi.openapiPath
+      })
+      setValidationResult(result)
+    } finally {
+      setValidating(false)
     }
   }
 
@@ -112,8 +138,22 @@ export default function App(): React.JSX.Element {
 
           {selectedApi ? (
             <div className="mt-8 rounded-xl border border-[#21262d] bg-[#111723] p-5">
-              <h2 className="text-lg font-semibold text-slate-100">Operations</h2>
-              <p className="text-sm text-slate-400 mt-1">{selectedApi.openapiPath}</p>
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-lg font-semibold text-slate-100">Operations</h2>
+                  <p className="text-sm text-slate-400 mt-1">{selectedApi.openapiPath}</p>
+                </div>
+                <button
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-700 hover:bg-emerald-600 active:bg-emerald-800 disabled:bg-emerald-900/70 disabled:text-slate-300 text-white text-sm font-medium rounded-lg transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500"
+                  onClick={onValidateSelectedApi}
+                  disabled={validating}
+                >
+                  {validating ? 'Validating...' : 'Validate OpenAPI'}
+                </button>
+              </div>
+
+              <ValidationResultPanel result={validationResult} />
+
               <ul className="mt-4 space-y-2">
                 {selectedApi.operations.length === 0 ? (
                   <li className="text-sm text-slate-500">No operations found in this API document.</li>
@@ -138,6 +178,51 @@ export default function App(): React.JSX.Element {
           <div className="mt-8 text-xs text-slate-600">Git must be installed on your system.</div>
         </div>
       </main>
+    </div>
+  )
+}
+
+interface ValidationResultPanelProps {
+  result: ValidateOpenApiResult | null
+}
+
+function ValidationResultPanel(props: ValidationResultPanelProps): React.JSX.Element | null {
+  if (!props.result) {
+    return null
+  }
+
+  if (props.result.status === 'valid') {
+    return (
+      <div className="mt-4 rounded-lg border border-emerald-700/60 bg-emerald-950/40 px-4 py-3 text-sm text-emerald-300">
+        OpenAPI document is structurally valid.
+      </div>
+    )
+  }
+
+  if (props.result.status === 'error') {
+    return (
+      <div className="mt-4 rounded-lg border border-rose-800/70 bg-rose-950/40 px-4 py-3 text-sm text-rose-300">
+        {props.result.message}
+      </div>
+    )
+  }
+
+  return (
+    <div className="mt-4 rounded-lg border border-amber-700/60 bg-amber-950/40 px-4 py-3">
+      <p className="text-sm text-amber-300">
+        Validation found {props.result.issueCount} issue{props.result.issueCount === 1 ? '' : 's'}.
+      </p>
+      <ul className="mt-2 space-y-2">
+        {props.result.issues.slice(0, 8).map((issue, index) => (
+          <li key={`${issue.path ?? 'root'}-${index}`} className="text-xs text-amber-200/90">
+            {issue.path ? `${issue.path}: ` : ''}
+            {issue.message}
+          </li>
+        ))}
+      </ul>
+      {props.result.issueCount > 8 ? (
+        <p className="mt-2 text-xs text-amber-400">Showing first 8 issues.</p>
+      ) : null}
     </div>
   )
 }

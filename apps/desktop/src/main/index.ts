@@ -2,7 +2,12 @@ import { app, BrowserWindow, dialog, ipcMain } from 'electron'
 import { promises as fs } from 'node:fs'
 import { join } from 'path'
 import { loadWorkspaceSnapshot } from '@apicaramba/core-model'
-import type { OpenWorkspaceResult } from '@apicaramba/shared-types'
+import { validateOpenApiDocument } from '@apicaramba/validation'
+import type {
+  OpenWorkspaceResult,
+  ValidateOpenApiRequest,
+  ValidateOpenApiResult
+} from '@apicaramba/shared-types'
 
 const isDev = !app.isPackaged
 
@@ -65,8 +70,13 @@ async function openWorkspaceDialog(): Promise<OpenWorkspaceResult> {
   }
 }
 
+async function validateOpenApi(request: ValidateOpenApiRequest): Promise<ValidateOpenApiResult> {
+  return validateOpenApiDocument(request)
+}
+
 app.whenReady().then(() => {
   ipcMain.handle('workspace:open', openWorkspaceDialog)
+  ipcMain.handle('openapi:validate', (_, request: ValidateOpenApiRequest) => validateOpenApi(request))
 
   createWindow()
 
@@ -85,4 +95,5 @@ app.on('window-all-closed', () => {
 
 app.on('will-quit', () => {
   ipcMain.removeHandler('workspace:open')
+  ipcMain.removeHandler('openapi:validate')
 })

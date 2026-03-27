@@ -5,9 +5,14 @@ import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig({
   main: {
+    build: {
+      rollupOptions: {
+        external: ['@apidevtools/swagger-parser']
+      }
+    },
     plugins: [
       externalizeDepsPlugin({
-        exclude: ['@apicaramba/core-model', '@apicaramba/shared-types']
+        exclude: ['@apicaramba/core-model', '@apicaramba/shared-types', '@apicaramba/validation']
       })
     ]
   },

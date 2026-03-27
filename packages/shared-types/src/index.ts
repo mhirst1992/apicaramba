@@ -18,3 +18,8 @@ export type {
   Environment,
   EnvironmentsConfig
 } from './environments.js'
+export type {
+  ValidateOpenApiRequest,
+  OpenApiValidationIssue,
+  ValidateOpenApiResult
+} from './validation.js'

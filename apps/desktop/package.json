@@ -9,8 +9,10 @@
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json"
   },
   "dependencies": {
+    "@apidevtools/swagger-parser": "^10.1.0",
     "@apicaramba/core-model": "workspace:*",
-    "@apicaramba/shared-types": "workspace:*"
+    "@apicaramba/shared-types": "workspace:*",
+    "@apicaramba/validation": "workspace:*"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.0.0",
