@@ -1,0 +1,16 @@
+{
+  "name": "@apicaramba/import-export",
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@apicaramba/shared-types": "workspace:*"
+  }
+}
+

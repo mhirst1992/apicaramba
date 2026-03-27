@@ -1,0 +1,16 @@
+{
+  "name": "@apicaramba/validation",
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@apicaramba/shared-types": "workspace:*",
+    "@apidevtools/swagger-parser": "^10.1.0"
+  }
+}
+

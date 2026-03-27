@@ -1,0 +1,65 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://apicaramba.dev/schemas/environments.json",
+  "title": "EnvironmentsConfig",
+  "description": "Contents of .api-tool/environments.json — environment profiles and variables.",
+  "type": "object",
+  "required": ["version", "activeEnvironmentId", "environments"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "type": "string",
+      "description": "Schema version. Current: 1.0.0",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
+    "activeEnvironmentId": {
+      "type": "string",
+      "description": "ID of the currently active environment."
+    },
+    "environments": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/Environment" }
+    }
+  },
+  "$defs": {
+    "EnvironmentVariable": {
+      "type": "object",
+      "required": ["id", "name", "value", "isSecret"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "name": {
+          "type": "string",
+          "description": "Variable name used in substitution, e.g. AUTH_TOKEN",
+          "minLength": 1
+        },
+        "value": {
+          "type": "string",
+          "description": "Plain value for non-secret variables. Always empty string for secrets."
+        },
+        "isSecret": {
+          "type": "boolean",
+          "description": "When true, the value is stored in the OS credential store and never committed."
+        },
+        "description": { "type": "string" }
+      }
+    },
+    "Environment": {
+      "type": "object",
+      "required": ["id", "name", "baseUrl", "variables"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string", "minLength": 1 },
+        "baseUrl": {
+          "type": "string",
+          "description": "Base URL for requests. May contain variable references e.g. {{BASE_URL}}"
+        },
+        "variables": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/EnvironmentVariable" }
+        }
+      }
+    }
+  }
+}

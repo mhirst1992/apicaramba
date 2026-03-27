@@ -1,0 +1,12 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./packages/shared-types" },
+    { "path": "./packages/core-model" },
+    { "path": "./packages/import-export" },
+    { "path": "./packages/validation" },
+    { "path": "./packages/git-adapter" },
+    { "path": "./packages/request-execution" },
+    { "path": "./packages/secrets" }
+  ]
+}
