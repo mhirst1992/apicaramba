@@ -12,9 +12,11 @@
     "test:coverage": "vitest run --coverage"
   },
   "devDependencies": {
-    "typescript-eslint": "^8.0.0",
+    "@types/node": "^22.15.3",
+    "@types/swagger2openapi": "^7.0.4",
     "eslint": "^9.0.0",
     "typescript": "^5.6.0",
+    "typescript-eslint": "^8.0.0",
     "vitest": "^2.1.0"
   },
   "engines": {
@@ -22,7 +24,11 @@
     "pnpm": ">=9.0.0"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["electron", "esbuild", "keytar"],
+    "onlyBuiltDependencies": [
+      "electron",
+      "esbuild",
+      "keytar"
+    ],
     "overrides": {
       "esbuild": ">=0.25.0"
     }

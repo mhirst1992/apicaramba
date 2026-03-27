@@ -1,4 +1,10 @@
-export type { Workspace } from './workspace.js'
+export type {
+  Workspace,
+  OperationSummary,
+  ApiSummary,
+  WorkspaceSnapshot,
+  OpenWorkspaceResult
+} from './workspace.js'
 export type {
   HttpMethod,
   ApiReference,

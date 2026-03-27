@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json"
   },
   "dependencies": {
+    "@apicaramba/core-model": "workspace:*",
     "@apicaramba/shared-types": "workspace:*"
   },
   "devDependencies": {

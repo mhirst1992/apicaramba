@@ -1,4 +1,5 @@
-import { contextBridge } from 'electron'
+import { contextBridge, ipcRenderer } from 'electron'
+import type { OpenWorkspaceResult } from '@apicaramba/shared-types'
 
 /**
  * Exposes a minimal, safe API surface to the renderer via contextBridge.
@@ -12,6 +13,7 @@ export interface AppBridge {
     electron: string
   }
   platform: NodeJS.Platform
+  openWorkspace: () => Promise<OpenWorkspaceResult>
 }
 
 const bridge: AppBridge = {
@@ -20,7 +22,8 @@ const bridge: AppBridge = {
     chrome: process.versions.chrome,
     electron: process.versions.electron
   },
-  platform: process.platform
+  platform: process.platform,
+  openWorkspace: () => ipcRenderer.invoke('workspace:open') as Promise<OpenWorkspaceResult>
 }
 
 contextBridge.exposeInMainWorld('appBridge', bridge)
