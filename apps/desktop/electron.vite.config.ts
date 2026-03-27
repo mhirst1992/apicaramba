@@ -5,10 +5,18 @@ import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin()]
+    plugins: [
+      externalizeDepsPlugin({
+        exclude: ['@apicaramba/core-model', '@apicaramba/shared-types']
+      })
+    ]
   },
   preload: {
-    plugins: [externalizeDepsPlugin()]
+    plugins: [
+      externalizeDepsPlugin({
+        exclude: ['@apicaramba/shared-types']
+      })
+    ]
   },
   renderer: {
     resolve: {
