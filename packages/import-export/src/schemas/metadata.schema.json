@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://apicaramba.dev/schemas/metadata.json",
+  "title": "WorkspaceMetadata",
+  "description": "Contents of .api-tool/metadata.json — workspace identity and timestamps.",
+  "type": "object",
+  "required": ["version", "workspaceId", "name", "createdAt", "updatedAt"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "type": "string",
+      "description": "Schema version for forward-compatibility. Current: 1.0.0",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
+    "workspaceId": {
+      "type": "string",
+      "description": "Stable UUID for this workspace.",
+      "format": "uuid"
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable workspace name.",
+      "minLength": 1
+    },
+    "createdAt": {
+      "type": "string",
+      "description": "ISO 8601 creation timestamp.",
+      "format": "date-time"
+    },
+    "updatedAt": {
+      "type": "string",
+      "description": "ISO 8601 last-updated timestamp.",
+      "format": "date-time"
+    }
+  }
+}

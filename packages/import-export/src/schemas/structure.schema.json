@@ -1,0 +1,70 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://apicaramba.dev/schemas/structure.json",
+  "title": "StructureConfig",
+  "description": "Contents of .api-tool/structure.json — folder/group hierarchy for all APIs.",
+  "type": "object",
+  "required": ["version", "apis"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "type": "string",
+      "description": "Schema version. Current: 1.0.0",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
+    "apis": {
+      "type": "array",
+      "description": "Structural metadata for each API in the workspace.",
+      "items": { "$ref": "#/$defs/ApiStructure" }
+    }
+  },
+  "$defs": {
+    "HttpMethod": {
+      "type": "string",
+      "enum": ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS", "TRACE"]
+    },
+    "OperationRef": {
+      "type": "object",
+      "required": ["id", "method", "path"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "operationId": { "type": ["string", "null"] },
+        "method": { "$ref": "#/$defs/HttpMethod" },
+        "path": { "type": "string", "minLength": 1 }
+      }
+    },
+    "FolderNode": {
+      "type": "object",
+      "required": ["id", "name", "children", "operations"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string", "minLength": 1 },
+        "children": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/FolderNode" }
+        },
+        "operations": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/OperationRef" }
+        }
+      }
+    },
+    "ApiStructure": {
+      "type": "object",
+      "required": ["id", "name", "path", "rootFolder", "ungrouped"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string", "minLength": 1 },
+        "path": { "type": "string", "minLength": 1 },
+        "rootFolder": { "$ref": "#/$defs/FolderNode" },
+        "ungrouped": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/OperationRef" }
+        }
+      }
+    }
+  }
+}

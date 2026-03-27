@@ -1,0 +1,16 @@
+{
+  "name": "@apicaramba/git-adapter",
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@apicaramba/shared-types": "workspace:*",
+    "simple-git": "^3.27.0"
+  }
+}
+
