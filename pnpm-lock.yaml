@@ -11,6 +11,9 @@ importers:
 
   .:
     devDependencies:
+      '@types/node':
+        specifier: ^22.15.3
+        version: 22.19.15
       eslint:
         specifier: ^9.0.0
         version: 9.39.4(jiti@2.6.1)
@@ -26,6 +29,9 @@ importers:
 
   apps/desktop:
     dependencies:
+      '@apicaramba/core-model':
+        specifier: workspace:*
+        version: link:../../packages/core-model
       '@apicaramba/shared-types':
         specifier: workspace:*
         version: link:../../packages/shared-types
