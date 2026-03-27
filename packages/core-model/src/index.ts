@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs'
-import { createRequire } from 'node:module'
 import path from 'node:path'
 import type { HttpMethod, WorkspaceSnapshot, OperationSummary } from '@apicaramba/shared-types'
+import swagger2openapi from 'swagger2openapi'
 
 const OPENAPI_FILE = 'openapi.json'
 const OPENAPI_METHODS = ['get', 'post', 'put', 'patch', 'delete', 'head', 'options', 'trace'] as const
@@ -44,8 +44,7 @@ interface Swagger2OpenApiConverter {
 	) => Promise<SwaggerConversionResult>
 }
 
-const require = createRequire(import.meta.url)
-const swaggerConverter = require('swagger2openapi') as Swagger2OpenApiConverter
+const swaggerConverter = swagger2openapi as unknown as Swagger2OpenApiConverter
 
 export async function loadWorkspaceSnapshot(rootPath: string): Promise<WorkspaceSnapshot> {
 	const absoluteRoot = path.resolve(rootPath)
