@@ -1,6 +1,8 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type {
   OpenWorkspaceResult,
+  CreateWorkspaceRequest,
+  CreateWorkspaceResult,
   ValidateOpenApiRequest,
   ValidateOpenApiResult,
   LoadApiEditorRequest,
@@ -26,6 +28,7 @@ export interface AppBridge {
   }
   platform: NodeJS.Platform
   openWorkspace: () => Promise<OpenWorkspaceResult>
+  createWorkspace: (request: CreateWorkspaceRequest) => Promise<CreateWorkspaceResult>
   validateOpenApi: (request: ValidateOpenApiRequest) => Promise<ValidateOpenApiResult>
   loadApiEditor: (request: LoadApiEditorRequest) => Promise<LoadApiEditorResult>
   saveApiEditor: (request: SaveApiEditorRequest) => Promise<SaveApiEditorResult>
@@ -48,6 +51,8 @@ const bridge: AppBridge = {
   },
   platform: process.platform,
   openWorkspace: () => ipcRenderer.invoke('workspace:open') as Promise<OpenWorkspaceResult>,
+  createWorkspace: (request: CreateWorkspaceRequest) =>
+    ipcRenderer.invoke('workspace:create', request) as Promise<CreateWorkspaceResult>,
   validateOpenApi: (request: ValidateOpenApiRequest) =>
     ipcRenderer.invoke('openapi:validate', request) as Promise<ValidateOpenApiResult>,
   loadApiEditor: (request: LoadApiEditorRequest) =>
