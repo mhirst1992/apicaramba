@@ -156,12 +156,14 @@ export default function App(): React.JSX.Element {
   const sideApis = snapshot?.apis ?? []
 
   return (
-    <div className="flex h-full bg-surface-base text-slate-100">
+    <div className="flex flex-col h-full bg-surface-base text-slate-100">
+      <TitleBar workspaceName={snapshot?.workspace.rootPath.split(/[\\/]/).pop()} />
+      <div className="flex flex-1 overflow-hidden">
       <aside className="w-56 shrink-0 flex flex-col bg-surface-lower border-r border-surface-border">
-        <div className="flex items-center px-4 h-12 border-b border-surface-border shrink-0">
-          <BrandLogo />
+        <div className="flex items-center px-4 h-10 border-b border-surface-border shrink-0">
+          <span className="text-xs font-semibold text-slate-500 uppercase tracking-widest">APIs</span>
         </div>
-        <div className="flex-1 flex flex-col items-start px-3 pt-4 gap-1 overflow-y-auto">
+        <div className="flex-1 flex flex-col items-start px-3 pt-3 gap-1 overflow-y-auto">
           {sideApis.length === 0 ? (
             <SidebarPlaceholder />
           ) : (
@@ -182,14 +184,14 @@ export default function App(): React.JSX.Element {
               onClick={() => { void onOpenWorkspace() }}
               disabled={loading}
             >
-              {loading ? 'Opening…' : 'Switch Workspace'}
+              {loading ? 'Openingï¿½' : 'Switch Workspace'}
             </button>
           </div>
         ) : null}
       </aside>
 
       {!snapshot ? (
-        <main className="flex-1 overflow-auto">
+        <main className="flex-1 overflow-auto bg-surface-base">
           <div className="max-w-3xl mx-auto px-8 py-10">
             <div className="flex items-center justify-between gap-4">
               <div className="space-y-1">
@@ -203,7 +205,7 @@ export default function App(): React.JSX.Element {
                 onClick={() => { void onOpenWorkspace() }}
                 disabled={loading}
               >
-                {loading ? 'Opening…' : 'Open Workspace'}
+                {loading ? 'Openingï¿½' : 'Open Workspace'}
               </button>
             </div>
             {openError ? (
@@ -248,7 +250,7 @@ export default function App(): React.JSX.Element {
                   onClick={() => { void onValidate() }}
                   disabled={validating || !editorState}
                 >
-                  {validating ? 'Validating…' : 'Validate'}
+                  {validating ? 'Validatingï¿½' : 'Validate'}
                 </button>
                 <SaveButton
                   status={saveStatus}
@@ -279,12 +281,13 @@ export default function App(): React.JSX.Element {
           </section>
         </main>
       )}
+      </div>
     </div>
   )
 }
 
 function SaveButton({ status, isDirty, disabled, onClick }: { status: SaveStatus; isDirty: boolean; disabled: boolean; onClick: () => void }): React.JSX.Element {
-  const label = status === 'saving' ? 'Saving…' : status === 'saved' ? '? Saved' : 'Save'
+  const label = status === 'saving' ? 'Savingï¿½' : status === 'saved' ? '? Saved' : 'Save'
   const colour = status === 'saved'
     ? 'bg-primary/80 border-primary/40 text-white'
     : isDirty
@@ -366,6 +369,84 @@ function ApiListItem({ api, isSelected, onClick }: { api: ApiSummary; isSelected
     >
       <div className="text-sm font-medium truncate">{api.name}</div>
       <div className="text-xs text-slate-500 truncate">{api.operationCount} operations</div>
+    </button>
+  )
+}
+
+function TitleBar({ workspaceName }: { workspaceName?: string }): React.JSX.Element {
+  const [maximized, setMaximized] = React.useState(false)
+
+  React.useEffect(() => {
+    let mounted = true
+    void window.appBridge.windowControls.isMaximized().then((m) => { if (mounted) setMaximized(m) })
+    window.appBridge.windowControls.onMaximizeChange((m) => { if (mounted) setMaximized(m) })
+    return () => { mounted = false }
+  }, [])
+
+  return (
+    <div
+      className="flex h-9 items-stretch shrink-0 bg-surface-lower border-b border-surface-border"
+      style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+    >
+      <div
+        className="flex items-center px-4 w-56 shrink-0"
+        style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+      >
+        <BrandLogo />
+      </div>
+      <div className="flex-1 flex items-center justify-center pointer-events-none">
+        {workspaceName ? (
+          <span className="text-xs text-slate-500 truncate max-w-[260px]">{workspaceName}</span>
+        ) : null}
+      </div>
+      <div
+        className="flex items-stretch"
+        style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+      >
+        <TitleBarButton onClick={() => window.appBridge.windowControls.minimize()} title="Minimize">
+          <svg width="10" height="1" viewBox="0 0 10 1" aria-hidden="true"><line x1="0" y1="0.5" x2="10" y2="0.5" stroke="currentColor" strokeWidth="1.5" /></svg>
+        </TitleBarButton>
+        <TitleBarButton
+          onClick={() => { window.appBridge.windowControls.toggleMaximize() }}
+          title={maximized ? 'Restore' : 'Maximize'}
+        >
+          {maximized ? (
+            <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+              <rect x="2" y="0" width="8" height="8" rx="0.5" stroke="currentColor" strokeWidth="1.5" fill="none" />
+              <rect x="0" y="2" width="8" height="8" rx="0.5" stroke="currentColor" strokeWidth="1.5" className="fill-surface-lower" />
+            </svg>
+          ) : (
+            <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+              <rect x="0.75" y="0.75" width="8.5" height="8.5" rx="0.5" stroke="currentColor" strokeWidth="1.5" fill="none" />
+            </svg>
+          )}
+        </TitleBarButton>
+        <TitleBarButton onClick={() => window.appBridge.windowControls.close()} title="Close" isClose>
+          <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+            <line x1="1" y1="1" x2="9" y2="9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            <line x1="9" y1="1" x2="1" y2="9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          </svg>
+        </TitleBarButton>
+      </div>
+    </div>
+  )
+}
+
+function TitleBarButton({
+  onClick, title, isClose = false, children
+}: {
+  onClick: () => void
+  title: string
+  isClose?: boolean
+  children: React.ReactNode
+}): React.JSX.Element {
+  return (
+    <button
+      title={title}
+      onClick={onClick}
+      className={`flex items-center justify-center w-11 h-full text-slate-400 transition-colors ${isClose ? 'hover:bg-secondary hover:text-white' : 'hover:bg-surface-raised hover:text-slate-200'}`}
+    >
+      {children}
     </button>
   )
 }

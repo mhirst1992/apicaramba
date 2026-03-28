@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, IpcMainEvent } from 'electron'
 import { promises as fs } from 'node:fs'
 import { join, resolve } from 'path'
 import { loadWorkspaceSnapshot, loadApiEditor, buildUpdatedDocument, saveStructure } from '@apicaramba/core-model'
@@ -16,14 +16,16 @@ import type {
 
 const isDev = !app.isPackaged
 
+let mainWindow: BrowserWindow | null = null
+
 function createWindow(): void {
-  const mainWindow = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
     minWidth: 960,
     minHeight: 600,
     backgroundColor: '#0f1117',
-    titleBarStyle: 'hiddenInset',
+    frame: false,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
@@ -31,6 +33,9 @@ function createWindow(): void {
       nodeIntegration: false
     }
   })
+
+  mainWindow.on('maximize', () => mainWindow?.webContents.send('window:maximized'))
+  mainWindow.on('unmaximize', () => mainWindow?.webContents.send('window:unmaximized'))
 
   if (isDev && process.env['ELECTRON_RENDERER_URL']) {
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
@@ -137,6 +142,13 @@ app.whenReady().then(() => {
   ipcMain.handle('openapi:validate', (_, request: ValidateOpenApiRequest) => validateOpenApi(request))
   ipcMain.handle('openapi:load-editor', (_, request: LoadApiEditorRequest) => handleLoadApiEditor(request))
   ipcMain.handle('openapi:save-editor', (_, request: SaveApiEditorRequest) => handleSaveApiEditor(request))
+  ipcMain.on('window:minimize', (_e: IpcMainEvent) => mainWindow?.minimize())
+  ipcMain.on('window:toggle-maximize', (_e: IpcMainEvent) => {
+    if (mainWindow?.isMaximized()) mainWindow.unmaximize()
+    else mainWindow?.maximize()
+  })
+  ipcMain.on('window:close', (_e: IpcMainEvent) => mainWindow?.close())
+  ipcMain.handle('window:is-maximized', () => mainWindow?.isMaximized() ?? false)
 
   createWindow()
 
@@ -158,4 +170,8 @@ app.on('will-quit', () => {
   ipcMain.removeHandler('openapi:validate')
   ipcMain.removeHandler('openapi:load-editor')
   ipcMain.removeHandler('openapi:save-editor')
+  ipcMain.removeAllListeners('window:minimize')
+  ipcMain.removeAllListeners('window:toggle-maximize')
+  ipcMain.removeAllListeners('window:close')
+  ipcMain.removeHandler('window:is-maximized')
 })
