@@ -11,6 +11,7 @@
   "dependencies": {
     "@apidevtools/swagger-parser": "^10.1.0",
     "@apicaramba/core-model": "workspace:*",
+    "@apicaramba/import-export": "workspace:*",
     "@apicaramba/shared-types": "workspace:*",
     "@apicaramba/validation": "workspace:*"
   },

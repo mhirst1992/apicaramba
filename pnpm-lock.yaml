@@ -35,6 +35,9 @@ importers:
       '@apicaramba/core-model':
         specifier: workspace:*
         version: link:../../packages/core-model
+      '@apicaramba/import-export':
+        specifier: workspace:*
+        version: link:../../packages/import-export
       '@apicaramba/shared-types':
         specifier: workspace:*
         version: link:../../packages/shared-types

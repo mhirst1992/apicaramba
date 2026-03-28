@@ -2,7 +2,11 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type {
   OpenWorkspaceResult,
   ValidateOpenApiRequest,
-  ValidateOpenApiResult
+  ValidateOpenApiResult,
+  LoadApiEditorRequest,
+  LoadApiEditorResult,
+  SaveApiEditorRequest,
+  SaveApiEditorResult
 } from '@apicaramba/shared-types'
 
 /**
@@ -19,6 +23,8 @@ export interface AppBridge {
   platform: NodeJS.Platform
   openWorkspace: () => Promise<OpenWorkspaceResult>
   validateOpenApi: (request: ValidateOpenApiRequest) => Promise<ValidateOpenApiResult>
+  loadApiEditor: (request: LoadApiEditorRequest) => Promise<LoadApiEditorResult>
+  saveApiEditor: (request: SaveApiEditorRequest) => Promise<SaveApiEditorResult>
 }
 
 const bridge: AppBridge = {
@@ -30,7 +36,11 @@ const bridge: AppBridge = {
   platform: process.platform,
   openWorkspace: () => ipcRenderer.invoke('workspace:open') as Promise<OpenWorkspaceResult>,
   validateOpenApi: (request: ValidateOpenApiRequest) =>
-    ipcRenderer.invoke('openapi:validate', request) as Promise<ValidateOpenApiResult>
+    ipcRenderer.invoke('openapi:validate', request) as Promise<ValidateOpenApiResult>,
+  loadApiEditor: (request: LoadApiEditorRequest) =>
+    ipcRenderer.invoke('openapi:load-editor', request) as Promise<LoadApiEditorResult>,
+  saveApiEditor: (request: SaveApiEditorRequest) =>
+    ipcRenderer.invoke('openapi:save-editor', request) as Promise<SaveApiEditorResult>
 }
 
 contextBridge.exposeInMainWorld('appBridge', bridge)
