@@ -4,6 +4,8 @@ import type {
   ApiSummary,
   ValidateOpenApiResult,
   ApiStructure,
+  FolderNode,
+  OperationRef,
   OperationDetail,
   SaveApiEditorResult,
   EnvironmentsConfig,
@@ -51,6 +53,13 @@ export default function App(): React.JSX.Element {
   const [environmentsSaving, setEnvironmentsSaving] = React.useState(false)
   const [environmentsError, setEnvironmentsError] = React.useState<string | null>(null)
   const [environmentsMessage, setEnvironmentsMessage] = React.useState<string | null>(null)
+  const [selectedFolderId, setSelectedFolderId] = React.useState<string | null>(null)
+  const [draggingOperationId, setDraggingOperationId] = React.useState<string | null>(null)
+  const [openApiMenuId, setOpenApiMenuId] = React.useState<string | null>(null)
+  const [showEnvironmentPanel, setShowEnvironmentPanel] = React.useState(false)
+  const [savedStructureHash, setSavedStructureHash] = React.useState('')
+  const [showCreateFolderModal, setShowCreateFolderModal] = React.useState(false)
+  const [newFolderName, setNewFolderName] = React.useState('')
 
   const selectedApi = React.useMemo(
     () => snapshot?.apis.find((a) => a.id === selectedApiId) ?? null,
@@ -81,6 +90,7 @@ export default function App(): React.JSX.Element {
       setEditorState(null)
       setEditedOps({})
       setSelectedOpKey(null)
+      setSelectedFolderId(null)
       setSaveStatus('idle')
       setValidationResult(null)
       await loadEnvironmentsForWorkspace(result.snapshot.workspace.rootPath)
@@ -96,6 +106,7 @@ export default function App(): React.JSX.Element {
     if (!snapshot) return
     setSelectedApiId(api.id)
     setValidationResult(null)
+    setSelectedFolderId(null)
     await loadEditorForApi(snapshot.workspace.rootPath, api)
   }
 
@@ -177,9 +188,123 @@ export default function App(): React.JSX.Element {
       if (result.status === 'error') { setSaveStatus({ type: 'error', message: result.message }); return }
       setEditorState({ api, structure: result.structure, operations: result.operations })
       setSelectedOpKey(result.operations[0]?.key ?? null)
+      setSelectedFolderId(null)
+      setSavedStructureHash(JSON.stringify(result.structure))
     } finally {
       setEditorLoading(false)
     }
+  }
+
+  function findFolderById(folder: FolderNode, folderId: string): FolderNode | null {
+    if (folder.id === folderId) {
+      return folder
+    }
+
+    for (const child of folder.children) {
+      const match = findFolderById(child, folderId)
+      if (match) {
+        return match
+      }
+    }
+
+    return null
+  }
+
+  function operationsForSelectedFolder(structure: ApiStructure): OperationRef[] {
+    if (selectedFolderId === null) {
+      return structure.ungrouped
+    }
+
+    const folder = findFolderById(structure.rootFolder, selectedFolderId)
+    return folder?.operations ?? []
+  }
+
+  function updateStructure(mutator: (draft: ApiStructure) => void): void {
+    setEditorState((current) => {
+      if (!current) return current
+
+      const nextStructure = JSON.parse(JSON.stringify(current.structure)) as ApiStructure
+      mutator(nextStructure)
+      return { ...current, structure: nextStructure }
+    })
+  }
+
+  function onCreateFolder(): void {
+    if (!editorState) return
+    setNewFolderName('')
+    setShowCreateFolderModal(true)
+  }
+
+  function onConfirmCreateFolder(): void {
+    const name = newFolderName.trim()
+    if (!name) return
+
+    updateStructure((draft) => {
+      const parent = selectedFolderId ? findFolderById(draft.rootFolder, selectedFolderId) : draft.rootFolder
+      const target = parent ?? draft.rootFolder
+      const createdId = `${draft.id}__folder__${Date.now()}`
+      target.children.push({
+        id: createdId,
+        name,
+        children: [],
+        operations: []
+      })
+      setSelectedFolderId(createdId)
+    })
+
+    setShowCreateFolderModal(false)
+    setNewFolderName('')
+  }
+
+  function collectAndRemoveOperation(folder: FolderNode, operationId: string): OperationRef | null {
+    const opIndex = folder.operations.findIndex((op) => op.id === operationId)
+    if (opIndex >= 0) {
+      const [removed] = folder.operations.splice(opIndex, 1)
+      return removed ?? null
+    }
+
+    for (const child of folder.children) {
+      const removed = collectAndRemoveOperation(child, operationId)
+      if (removed) {
+        return removed
+      }
+    }
+
+    return null
+  }
+
+  function onDropOperation(operationId: string, folderId: string | null): void {
+    if (!editorState) return
+
+    updateStructure((draft) => {
+      let moved: OperationRef | null = null
+
+      const ungroupedIndex = draft.ungrouped.findIndex((op) => op.id === operationId)
+      if (ungroupedIndex >= 0) {
+        const [fromUngrouped] = draft.ungrouped.splice(ungroupedIndex, 1)
+        moved = fromUngrouped ?? null
+      }
+
+      if (!moved) {
+        moved = collectAndRemoveOperation(draft.rootFolder, operationId)
+      }
+
+      if (!moved) return
+
+      if (folderId === null) {
+        draft.ungrouped.push(moved)
+        return
+      }
+
+      const target = findFolderById(draft.rootFolder, folderId)
+      if (!target) {
+        draft.ungrouped.push(moved)
+        return
+      }
+
+      target.operations.push(moved)
+    })
+    setDraggingOperationId(null)
   }
 
   async function onValidate(): Promise<void> {
@@ -204,11 +329,15 @@ export default function App(): React.JSX.Element {
       const result: SaveApiEditorResult = await window.appBridge.saveApiEditor({
         workspaceRootPath: snapshot.workspace.rootPath,
         openapiRelativePath: editorState.api.openapiPath,
-        operations: mergedOperations
+        operations: mergedOperations,
+        structure: editorState.structure
       })
       if (result.status === 'saved') {
         setEditorState((prev) => prev ? { ...prev, operations: mergedOperations } : prev)
         setEditedOps({})
+        if (editorState) {
+          setSavedStructureHash(JSON.stringify(editorState.structure))
+        }
         setSaveStatus('saved')
         setTimeout(() => setSaveStatus('idle'), 2500)
       } else if (result.status === 'validation-failed') {
@@ -229,28 +358,61 @@ export default function App(): React.JSX.Element {
   const sideApis = snapshot?.apis ?? []
   const activeEnvironment = environmentsDraft?.environments[0] ?? null
   const environmentsDirty = JSON.stringify(environmentsConfig) !== JSON.stringify(environmentsDraft)
+  const structureDirty = editorState ? JSON.stringify(editorState.structure) !== savedStructureHash : false
+  const activeFolderOperations = editorState ? operationsForSelectedFolder(editorState.structure) : []
+  const hasAnyDirty = isDirty || structureDirty
 
   return (
     <div className="flex flex-col h-full bg-surface-base text-slate-100">
       <TitleBar workspaceName={snapshot?.workspace.rootPath.split(/[\\/]/).pop()} />
       <div className="flex flex-1 overflow-hidden">
-      <aside className="w-56 shrink-0 flex flex-col bg-surface-lower border-r border-surface-border">
+      <aside className="w-80 shrink-0 flex flex-col bg-surface-lower border-r border-surface-border">
         <div className="flex items-center px-4 h-10 border-b border-surface-border shrink-0">
           <span className="text-xs font-semibold text-slate-500 uppercase tracking-widest">APIs</span>
         </div>
-        <div className="flex-1 flex flex-col items-start px-3 pt-3 gap-1 overflow-y-auto">
+        <div className="flex-1 flex flex-col items-stretch px-3 pt-3 gap-2 overflow-y-auto">
           {sideApis.length === 0 ? (
             <SidebarPlaceholder />
           ) : (
             sideApis.map((api) => (
-              <ApiListItem
+              <ApiDropdownCard
                 key={api.id}
                 api={api}
                 isSelected={selectedApiId === api.id}
-                onClick={() => { void onSelectApi(api) }}
+                isMenuOpen={openApiMenuId === api.id}
+                onToggleMenu={() => setOpenApiMenuId((current) => current === api.id ? null : api.id)}
+                onSelect={() => { void onSelectApi(api) }}
+                onEnvironment={() => {
+                  setShowEnvironmentPanel(true)
+                  setOpenApiMenuId(null)
+                }}
+                onNewFolder={() => {
+                  if (selectedApiId === api.id) {
+                    onCreateFolder()
+                  } else {
+                    void onSelectApi(api).then(() => onCreateFolder())
+                  }
+                  setOpenApiMenuId(null)
+                }}
+                onNewRequest={() => {
+                  window.alert('New Request is stubbed for this phase.')
+                  setOpenApiMenuId(null)
+                }}
               />
             ))
           )}
+
+          {editorState && selectedApiId ? (
+            <div className="mt-1 rounded-lg border border-surface-border bg-surface-base px-2 py-2">
+              <EndpointTree
+                structure={editorState.structure}
+                selectedFolderId={selectedFolderId}
+                onSelectFolder={setSelectedFolderId}
+                draggingOperationId={draggingOperationId}
+                onDropOperation={onDropOperation}
+              />
+            </div>
+          ) : null}
         </div>
         {snapshot ? (
           <div className="px-3 pb-3 shrink-0">
@@ -293,20 +455,22 @@ export default function App(): React.JSX.Element {
         </main>
       ) : (
         <main className="flex-1 flex overflow-hidden">
-          <section className="w-72 shrink-0 flex flex-col border-r border-surface-border overflow-hidden">
+          <section className="w-80 shrink-0 flex flex-col border-r border-surface-border overflow-hidden">
             <div className="flex items-center px-4 h-12 border-b border-surface-border shrink-0">
               <span className="text-sm font-semibold text-slate-200 truncate">
-                {editorState?.api.name ?? selectedApi?.name ?? 'Endpoints'}
+                {selectedFolderId === null ? 'Unsorted Methods' : 'Folder Methods'}
               </span>
             </div>
             <div className="flex-1 overflow-y-auto px-2 py-3">
               {editorLoading ? (
                 <TreeSkeleton />
               ) : editorState ? (
-                <EndpointTree
-                  structure={editorState.structure}
-                  selectedKey={selectedOpKey}
+                <MethodsPanel
+                  operations={activeFolderOperations}
+                  selectedOperationKey={selectedOpKey}
                   onSelectOperation={setSelectedOpKey}
+                  onDragStart={setDraggingOperationId}
+                  onDragEnd={() => setDraggingOperationId(null)}
                 />
               ) : (
                 <p className="text-xs text-slate-500 px-2">Select an API to browse operations.</p>
@@ -329,7 +493,7 @@ export default function App(): React.JSX.Element {
                 </button>
                 <SaveButton
                   status={saveStatus}
-                  isDirty={isDirty}
+                  isDirty={hasAnyDirty}
                   disabled={!editorState || saveStatus === 'saving'}
                   onClick={() => { void onSave() }}
                 />
@@ -337,17 +501,20 @@ export default function App(): React.JSX.Element {
             </div>
 
             <div className="flex-1 overflow-y-auto px-6 py-6">
-              <EnvironmentPanel
-                environment={activeEnvironment}
-                loading={environmentsLoading}
-                saving={environmentsSaving}
-                dirty={environmentsDirty}
-                error={environmentsError}
-                message={environmentsMessage}
-                onChangeName={(name) => updateActiveEnvironment({ name })}
-                onChangeBaseUrl={(baseUrl) => updateActiveEnvironment({ baseUrl })}
-                onSave={onSaveEnvironments}
-              />
+              {showEnvironmentPanel ? (
+                <EnvironmentPanel
+                  environment={activeEnvironment}
+                  loading={environmentsLoading}
+                  saving={environmentsSaving}
+                  dirty={environmentsDirty}
+                  error={environmentsError}
+                  message={environmentsMessage}
+                  onClose={() => setShowEnvironmentPanel(false)}
+                  onChangeName={(name) => updateActiveEnvironment({ name })}
+                  onChangeBaseUrl={(baseUrl) => updateActiveEnvironment({ baseUrl })}
+                  onSave={onSaveEnvironments}
+                />
+              ) : null}
               <SaveFeedback status={saveStatus} />
               {validationResult ? (
                 <div className="mb-5">
@@ -368,6 +535,45 @@ export default function App(): React.JSX.Element {
         </main>
       )}
       </div>
+
+      {showCreateFolderModal ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-sm rounded-xl border border-surface-border bg-surface-base p-4 shadow-xl">
+            <h3 className="text-sm font-semibold text-slate-100">Create Folder</h3>
+            <p className="mt-1 text-xs text-slate-400">Choose a name for the new folder.</p>
+            <input
+              autoFocus
+              value={newFolderName}
+              onChange={(event) => setNewFolderName(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  onConfirmCreateFolder()
+                }
+                if (event.key === 'Escape') {
+                  setShowCreateFolderModal(false)
+                }
+              }}
+              placeholder="New folder"
+              className="mt-3 w-full rounded-lg border border-surface-border bg-surface-lower px-3 py-2 text-sm text-slate-100 outline-none focus:border-primary/60"
+            />
+            <div className="mt-3 flex justify-end gap-2">
+              <button
+                className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg border border-surface-border text-slate-400 hover:bg-surface-raised hover:text-slate-100 transition-colors"
+                onClick={() => setShowCreateFolderModal(false)}
+              >
+                Cancel
+              </button>
+              <button
+                className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg bg-primary text-white hover:bg-primary/80 disabled:opacity-40"
+                disabled={newFolderName.trim().length === 0}
+                onClick={onConfirmCreateFolder}
+              >
+                Create
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -379,6 +585,7 @@ interface EnvironmentPanelProps {
   dirty: boolean
   error: string | null
   message: string | null
+  onClose: () => void
   onChangeName: (value: string) => void
   onChangeBaseUrl: (value: string) => void
   onSave: () => void
@@ -392,13 +599,21 @@ function EnvironmentPanel(props: EnvironmentPanelProps): React.JSX.Element {
           <h3 className="text-sm font-semibold text-slate-100">Environment</h3>
           <p className="text-xs text-slate-400 mt-0.5">Single profile stored in .api-tool/environments.json</p>
         </div>
-        <button
-          className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg border border-surface-border text-slate-300 hover:bg-surface-raised hover:text-slate-100 disabled:opacity-40 transition-colors"
-          disabled={props.loading || props.saving || !props.environment || !props.dirty}
-          onClick={props.onSave}
-        >
-          {props.saving ? 'Saving...' : 'Save Environment'}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg border border-surface-border text-slate-300 hover:bg-surface-raised hover:text-slate-100 disabled:opacity-40 transition-colors"
+            disabled={props.loading || props.saving || !props.environment || !props.dirty}
+            onClick={props.onSave}
+          >
+            {props.saving ? 'Saving...' : 'Save Environment'}
+          </button>
+          <button
+            className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg border border-surface-border text-slate-400 hover:bg-surface-raised hover:text-slate-100 transition-colors"
+            onClick={props.onClose}
+          >
+            Close
+          </button>
+        </div>
       </div>
 
       {props.error ? (
@@ -518,15 +733,112 @@ function EmptyState(): React.JSX.Element {
   )
 }
 
-function ApiListItem({ api, isSelected, onClick }: { api: ApiSummary; isSelected: boolean; onClick: () => void }): React.JSX.Element {
+function ApiDropdownCard({
+  api,
+  isSelected,
+  isMenuOpen,
+  onToggleMenu,
+  onSelect,
+  onEnvironment,
+  onNewFolder,
+  onNewRequest
+}: {
+  api: ApiSummary
+  isSelected: boolean
+  isMenuOpen: boolean
+  onToggleMenu: () => void
+  onSelect: () => void
+  onEnvironment: () => void
+  onNewFolder: () => void
+  onNewRequest: () => void
+}): React.JSX.Element {
   return (
-    <button
-      className={`w-full text-left px-2.5 py-2 rounded-md border transition-colors ${isSelected ? 'bg-primary/15 border-primary/35 text-slate-100' : 'border-transparent text-slate-300 hover:bg-surface-raised hover:text-slate-100'}`}
-      onClick={onClick}
-    >
-      <div className="text-sm font-medium truncate">{api.name}</div>
-      <div className="text-xs text-slate-500 truncate">{api.operationCount} operations</div>
-    </button>
+    <div className={`rounded-lg border ${isSelected ? 'border-primary/35 bg-primary/10' : 'border-surface-border bg-surface-base'}`}>
+      <div className="flex items-center gap-2 px-2.5 py-2">
+        <button className="flex-1 text-left" onClick={onSelect}>
+          <div className="text-sm font-medium truncate">{api.name}</div>
+          <div className="text-xs text-slate-500 truncate">{api.operationCount} operations</div>
+        </button>
+        <button
+          className="text-slate-400 hover:text-slate-100 rounded px-1"
+          onClick={onToggleMenu}
+          title="API actions"
+        >
+          ⋯
+        </button>
+      </div>
+
+      {isMenuOpen ? (
+        <div className="px-2.5 pb-2 flex flex-col gap-1">
+          <button className="text-left text-xs px-2 py-1 rounded hover:bg-surface-raised" onClick={onEnvironment}>Environment</button>
+          <button className="text-left text-xs px-2 py-1 rounded hover:bg-surface-raised" onClick={onNewFolder}>New Folder</button>
+          <button className="text-left text-xs px-2 py-1 rounded hover:bg-surface-raised" onClick={onNewRequest}>New Request</button>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function MethodsPanel({
+  operations,
+  selectedOperationKey,
+  onSelectOperation,
+  onDragStart,
+  onDragEnd
+}: {
+  operations: OperationRef[]
+  selectedOperationKey: string | null
+  onSelectOperation: (key: string) => void
+  onDragStart: (operationId: string) => void
+  onDragEnd: () => void
+}): React.JSX.Element {
+  const METHOD_COLOURS: Record<string, string> = {
+    GET: 'text-[#6C7D47]',
+    POST: 'text-[#FACC15]',
+    PUT: 'text-blue-400',
+    PATCH: 'text-purple-400',
+    DELETE: 'text-[#BC4B51]',
+    HEAD: 'text-slate-400',
+    OPTIONS: 'text-slate-400',
+    TRACE: 'text-slate-400'
+  }
+
+  return (
+    <div className="flex flex-col gap-1">
+      {operations.map((op) => {
+        const key = `${op.method}:${op.path}`
+        return (
+          <div
+            key={op.id}
+            className={`flex items-center gap-2 px-2 py-1.5 rounded border transition-colors ${
+              selectedOperationKey === key
+                ? 'bg-primary/15 border-primary/35'
+                : 'border-transparent hover:bg-surface-raised'
+            }`}
+          >
+            <button
+              className="text-slate-500 hover:text-slate-300 cursor-grab"
+              title="Drag to move"
+              draggable
+              onDragStart={() => onDragStart(op.id)}
+              onDragEnd={onDragEnd}
+            >
+              ⋮⋮
+            </button>
+            <button className="flex-1 text-left" onClick={() => onSelectOperation(key)}>
+              <span className={`font-mono text-xs font-semibold mr-2 ${METHOD_COLOURS[op.method] ?? 'text-slate-400'}`}>
+                {op.method}
+              </span>
+              <span className="text-xs text-slate-300 truncate">{op.path}</span>
+            </button>
+          </div>
+        )
+      })}
+
+      {operations.length === 0 ? (
+        <p className="text-xs text-slate-500 px-2 py-2">No methods in this folder.</p>
+      ) : null}
+    </div>
   )
 }
 

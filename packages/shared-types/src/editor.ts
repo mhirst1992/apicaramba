@@ -32,6 +32,8 @@ export interface SaveApiEditorRequest {
   openapiRelativePath: string
   /** Full list of operations with their current (possibly edited) field values. */
   operations: OperationDetail[]
+  /** Current folder structure and ungrouped assignments for this API. */
+  structure: ApiStructure
 }
 
 export type SaveApiEditorResult =

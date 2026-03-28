@@ -148,8 +148,7 @@ async function handleSaveApiEditor(request: SaveApiEditorRequest): Promise<SaveA
     await fs.unlink(tempPath).catch(() => undefined)
 
     // Persist structure (creates .api-tool/ if not present)
-    const { structure } = await loadApiEditor(request.workspaceRootPath, request.openapiRelativePath)
-    await saveStructure(request.workspaceRootPath, structure)
+    await saveStructure(request.workspaceRootPath, request.structure)
 
     return { status: 'saved' }
   } catch (error) {
