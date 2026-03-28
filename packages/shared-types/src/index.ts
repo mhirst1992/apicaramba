@@ -3,7 +3,9 @@ export type {
   OperationSummary,
   ApiSummary,
   WorkspaceSnapshot,
-  OpenWorkspaceResult
+  OpenWorkspaceResult,
+  CreateWorkspaceRequest,
+  CreateWorkspaceResult
 } from './workspace.js'
 export type {
   HttpMethod,

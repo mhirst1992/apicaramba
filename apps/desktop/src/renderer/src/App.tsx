@@ -60,6 +60,8 @@ export default function App(): React.JSX.Element {
   const [savedStructureHash, setSavedStructureHash] = React.useState('')
   const [showCreateFolderModal, setShowCreateFolderModal] = React.useState(false)
   const [newFolderName, setNewFolderName] = React.useState('')
+  const [showCreateWorkspaceModal, setShowCreateWorkspaceModal] = React.useState(false)
+  const [newWorkspaceName, setNewWorkspaceName] = React.useState('')
 
   const selectedApi = React.useMemo(
     () => snapshot?.apis.find((a) => a.id === selectedApiId) ?? null,
@@ -78,6 +80,21 @@ export default function App(): React.JSX.Element {
     [mergedOperations, selectedOpKey]
   )
 
+  async function initializeWorkspace(snapshotToLoad: WorkspaceSnapshot): Promise<void> {
+    setSnapshot(snapshotToLoad)
+    setSelectedApiId(snapshotToLoad.apis[0]?.id ?? null)
+    setEditorState(null)
+    setEditedOps({})
+    setSelectedOpKey(null)
+    setSelectedFolderId(null)
+    setSaveStatus('idle')
+    setValidationResult(null)
+    await loadEnvironmentsForWorkspace(snapshotToLoad.workspace.rootPath)
+    if (snapshotToLoad.apis[0]) {
+      await loadEditorForApi(snapshotToLoad.workspace.rootPath, snapshotToLoad.apis[0])
+    }
+  }
+
   async function onOpenWorkspace(): Promise<void> {
     setLoading(true)
     setOpenError(null)
@@ -85,18 +102,32 @@ export default function App(): React.JSX.Element {
       const result = await window.appBridge.openWorkspace()
       if (result.status === 'cancelled') return
       if (result.status === 'error') { setOpenError(result.message); return }
-      setSnapshot(result.snapshot)
-      setSelectedApiId(result.snapshot.apis[0]?.id ?? null)
-      setEditorState(null)
-      setEditedOps({})
-      setSelectedOpKey(null)
-      setSelectedFolderId(null)
-      setSaveStatus('idle')
-      setValidationResult(null)
-      await loadEnvironmentsForWorkspace(result.snapshot.workspace.rootPath)
-      if (result.snapshot.apis[0]) {
-        await loadEditorForApi(result.snapshot.workspace.rootPath, result.snapshot.apis[0])
+      await initializeWorkspace(result.snapshot)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function onCreateWorkspace(): Promise<void> {
+    const name = newWorkspaceName.trim()
+    if (!name) {
+      setOpenError('Workspace name is required.')
+      return
+    }
+
+    setLoading(true)
+    setOpenError(null)
+    try {
+      const result = await window.appBridge.createWorkspace({ name })
+      if (result.status === 'cancelled') return
+      if (result.status === 'error') {
+        setOpenError(result.message)
+        return
       }
+
+      setShowCreateWorkspaceModal(false)
+      setNewWorkspaceName('')
+      await initializeWorkspace(result.snapshot)
     } finally {
       setLoading(false)
     }
@@ -421,7 +452,7 @@ export default function App(): React.JSX.Element {
               onClick={() => { void onOpenWorkspace() }}
               disabled={loading}
             >
-              {loading ? 'Opening�' : 'Switch Workspace'}
+              {loading ? 'Opening...' : 'Switch Workspace'}
             </button>
           </div>
         ) : null}
@@ -434,16 +465,29 @@ export default function App(): React.JSX.Element {
               <div className="space-y-1">
                 <h1 className="text-2xl font-bold tracking-tight">Open a workspace</h1>
                 <p className="text-sm text-slate-400 leading-relaxed">
-                  A workspace is a Git repository containing your API definitions.
+                  A workspace is a local folder containing your API definitions. Git is optional.
                 </p>
               </div>
-              <button
-                className="inline-flex items-center gap-2 px-5 py-2.5 bg-primary hover:bg-primary/80 active:bg-primary/70 disabled:bg-primary/30 disabled:text-slate-400 text-white text-sm font-medium rounded-lg transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-                onClick={() => { void onOpenWorkspace() }}
-                disabled={loading}
-              >
-                {loading ? 'Opening�' : 'Open Workspace'}
-              </button>
+              <div className="flex items-center gap-3">
+                <button
+                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-primary hover:bg-primary/80 active:bg-primary/70 disabled:bg-primary/30 disabled:text-slate-400 text-white text-sm font-medium rounded-lg transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                  onClick={() => { void onOpenWorkspace() }}
+                  disabled={loading}
+                >
+                  {loading ? 'Opening...' : 'Open Workspace'}
+                </button>
+                <span className="text-xs text-slate-400">...or</span>
+                <button
+                  className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border border-surface-border text-slate-200 hover:bg-surface-raised transition-colors disabled:opacity-40"
+                  onClick={() => {
+                    setOpenError(null)
+                    setShowCreateWorkspaceModal(true)
+                  }}
+                  disabled={loading}
+                >
+                  Create a New Workspace
+                </button>
+              </div>
             </div>
             {openError ? (
               <div className="mt-5 rounded-lg border border-secondary/60 bg-secondary/10 px-4 py-3 text-sm text-slate-300">
@@ -489,7 +533,7 @@ export default function App(): React.JSX.Element {
                   onClick={() => { void onValidate() }}
                   disabled={validating || !editorState}
                 >
-                  {validating ? 'Validating�' : 'Validate'}
+                  {validating ? 'Validating...' : 'Validate'}
                 </button>
                 <SaveButton
                   status={saveStatus}
@@ -569,6 +613,50 @@ export default function App(): React.JSX.Element {
                 onClick={onConfirmCreateFolder}
               >
                 Create
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {showCreateWorkspaceModal ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-sm rounded-xl border border-surface-border bg-surface-base p-4 shadow-xl">
+            <h3 className="text-sm font-semibold text-slate-100">Create New Workspace</h3>
+            <p className="mt-1 text-xs text-slate-400">
+              Enter a workspace name. You will choose its location next.
+            </p>
+            <input
+              autoFocus
+              value={newWorkspaceName}
+              onChange={(event) => setNewWorkspaceName(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  void onCreateWorkspace()
+                }
+                if (event.key === 'Escape') {
+                  setShowCreateWorkspaceModal(false)
+                }
+              }}
+              placeholder="My API Workspace"
+              className="mt-3 w-full rounded-lg border border-surface-border bg-surface-lower px-3 py-2 text-sm text-slate-100 outline-none focus:border-primary/60"
+            />
+            <div className="mt-3 flex justify-end gap-2">
+              <button
+                className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg border border-surface-border text-slate-400 hover:bg-surface-raised hover:text-slate-100 transition-colors"
+                onClick={() => {
+                  setShowCreateWorkspaceModal(false)
+                  setNewWorkspaceName('')
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg bg-primary text-white hover:bg-primary/80 disabled:opacity-40"
+                disabled={newWorkspaceName.trim().length === 0 || loading}
+                onClick={() => { void onCreateWorkspace() }}
+              >
+                {loading ? 'Creating...' : 'Create'}
               </button>
             </div>
           </div>
@@ -659,7 +747,7 @@ function EnvironmentPanel(props: EnvironmentPanelProps): React.JSX.Element {
 }
 
 function SaveButton({ status, isDirty, disabled, onClick }: { status: SaveStatus; isDirty: boolean; disabled: boolean; onClick: () => void }): React.JSX.Element {
-  const label = status === 'saving' ? 'Saving�' : status === 'saved' ? '? Saved' : 'Save'
+  const label = status === 'saving' ? 'Saving...' : status === 'saved' ? 'Saved' : 'Save'
   const colour = status === 'saved'
     ? 'bg-primary/80 border-primary/40 text-white'
     : isDirty
@@ -724,9 +812,9 @@ function EmptyState(): React.JSX.Element {
         <WorkspaceIcon />
       </div>
       <div className="space-y-2">
-        <h2 className="text-xl font-bold tracking-tight">Load your Git workspace</h2>
+        <h2 className="text-xl font-bold tracking-tight">Load your workspace</h2>
         <p className="text-sm text-slate-400 leading-relaxed">
-          APICaramba will scan the repository for openapi.json files and show operations by API.
+          {'{api:caramba}'} scans your folder for openapi.json files and shows operations by API.
         </p>
       </div>
     </div>

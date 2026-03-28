@@ -33,7 +33,16 @@ export interface WorkspaceSnapshot {
   apis: ApiSummary[]
 }
 
+export interface CreateWorkspaceRequest {
+  name: string
+}
+
 export type OpenWorkspaceResult =
+  | { status: 'cancelled' }
+  | { status: 'selected'; snapshot: WorkspaceSnapshot }
+  | { status: 'error'; message: string }
+
+export type CreateWorkspaceResult =
   | { status: 'cancelled' }
   | { status: 'selected'; snapshot: WorkspaceSnapshot }
   | { status: 'error'; message: string }
