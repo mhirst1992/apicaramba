@@ -1,7 +1,14 @@
 import { app, BrowserWindow, dialog, ipcMain, IpcMainEvent } from 'electron'
 import { promises as fs } from 'node:fs'
 import { join, resolve } from 'path'
-import { loadWorkspaceSnapshot, loadApiEditor, buildUpdatedDocument, saveStructure } from '@apicaramba/core-model'
+import {
+  loadWorkspaceSnapshot,
+  loadApiEditor,
+  buildUpdatedDocument,
+  saveStructure,
+  loadEnvironmentsConfig,
+  saveEnvironmentsConfig
+} from '@apicaramba/core-model'
 import { validateOpenApiDocument } from '@apicaramba/validation'
 import { writeJsonFile } from '@apicaramba/import-export'
 import type {
@@ -11,7 +18,11 @@ import type {
   LoadApiEditorRequest,
   LoadApiEditorResult,
   SaveApiEditorRequest,
-  SaveApiEditorResult
+  SaveApiEditorResult,
+  LoadEnvironmentsRequest,
+  LoadEnvironmentsResult,
+  SaveEnvironmentsRequest,
+  SaveEnvironmentsResult
 } from '@apicaramba/shared-types'
 
 const isDev = !app.isPackaged
@@ -116,15 +127,23 @@ async function handleSaveApiEditor(request: SaveApiEditorRequest): Promise<SaveA
 
     if (validationResult.status === 'invalid') {
       await fs.unlink(tempPath).catch(() => undefined)
-      return { status: 'validation-failed', issueCount: validationResult.issueCount, issues: validationResult.issues }
+      return {
+        status: 'validation-failed',
+        issueCount: validationResult.issueCount,
+        issues: validationResult.issues
+      }
     }
 
     if (validationResult.status === 'error') {
       await fs.unlink(tempPath).catch(() => undefined)
-      return { status: 'validation-failed', issueCount: 1, issues: [{ message: validationResult.message, path: null }] }
+      return {
+        status: 'validation-failed',
+        issueCount: 1,
+        issues: [{ message: validationResult.message, path: null }]
+      }
     }
 
-    // Validation passed — commit the write
+    // Validation passed - commit the write
     await writeJsonFile(absPath, JSON.parse(updatedJson) as unknown)
     await fs.unlink(tempPath).catch(() => undefined)
 
@@ -139,6 +158,34 @@ async function handleSaveApiEditor(request: SaveApiEditorRequest): Promise<SaveA
   }
 }
 
+async function loadEnvironments(
+  request: LoadEnvironmentsRequest
+): Promise<LoadEnvironmentsResult> {
+  try {
+    const config = await loadEnvironmentsConfig(request.workspaceRootPath)
+    return { status: 'loaded', config }
+  } catch (error) {
+    return {
+      status: 'error',
+      message: error instanceof Error ? error.message : 'Failed to load environments.'
+    }
+  }
+}
+
+async function saveEnvironments(
+  request: SaveEnvironmentsRequest
+): Promise<SaveEnvironmentsResult> {
+  try {
+    const config = await saveEnvironmentsConfig(request.workspaceRootPath, request.config)
+    return { status: 'saved', config }
+  } catch (error) {
+    return {
+      status: 'error',
+      message: error instanceof Error ? error.message : 'Failed to save environments.'
+    }
+  }
+}
+
 app.whenReady().then(() => {
   if (process.platform === 'win32') {
     app.setAppUserModelId('com.apicaramba.desktop')
@@ -148,6 +195,8 @@ app.whenReady().then(() => {
   ipcMain.handle('openapi:validate', (_, request: ValidateOpenApiRequest) => validateOpenApi(request))
   ipcMain.handle('openapi:load-editor', (_, request: LoadApiEditorRequest) => handleLoadApiEditor(request))
   ipcMain.handle('openapi:save-editor', (_, request: SaveApiEditorRequest) => handleSaveApiEditor(request))
+  ipcMain.handle('environments:load', (_, request: LoadEnvironmentsRequest) => loadEnvironments(request))
+  ipcMain.handle('environments:save', (_, request: SaveEnvironmentsRequest) => saveEnvironments(request))
   ipcMain.on('window:minimize', (_e: IpcMainEvent) => mainWindow?.minimize())
   ipcMain.on('window:toggle-maximize', (_e: IpcMainEvent) => {
     if (mainWindow?.isMaximized()) mainWindow.unmaximize()
@@ -176,6 +225,8 @@ app.on('will-quit', () => {
   ipcMain.removeHandler('openapi:validate')
   ipcMain.removeHandler('openapi:load-editor')
   ipcMain.removeHandler('openapi:save-editor')
+  ipcMain.removeHandler('environments:load')
+  ipcMain.removeHandler('environments:save')
   ipcMain.removeAllListeners('window:minimize')
   ipcMain.removeAllListeners('window:toggle-maximize')
   ipcMain.removeAllListeners('window:close')

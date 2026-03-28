@@ -1,0 +1,48 @@
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import os from 'node:os'
+import path from 'node:path'
+import { describe, expect, it } from 'vitest'
+import { loadEnvironmentsConfig, saveEnvironmentsConfig } from './environments.js'
+
+describe('environments config', () => {
+  it('returns a default single environment when file is missing', async () => {
+    const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'apicaramba-env-default-'))
+
+    try {
+      const config = await loadEnvironmentsConfig(tempRoot)
+      expect(config.environments).toHaveLength(1)
+      expect(config.activeEnvironmentId).toBe(config.environments[0]?.id)
+      expect(config.environments[0]?.name).toBe('Default')
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('saves and reloads normalized single environment config', async () => {
+    const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'apicaramba-env-save-'))
+
+    try {
+      const saved = await saveEnvironmentsConfig(tempRoot, {
+        version: '1.0.0',
+        activeEnvironmentId: 'dev',
+        environments: [
+          { id: 'dev', name: 'Dev', baseUrl: 'https://api.example.dev', variables: [] },
+          { id: 'ignored', name: 'Ignored', baseUrl: '', variables: [] }
+        ]
+      })
+
+      expect(saved.environments).toHaveLength(1)
+      expect(saved.environments[0]?.id).toBe('dev')
+      expect(saved.activeEnvironmentId).toBe('dev')
+
+      const reloaded = await loadEnvironmentsConfig(tempRoot)
+      expect(reloaded).toEqual(saved)
+
+      const filePath = path.join(tempRoot, '.api-tool', 'environments.json')
+      const raw = await readFile(filePath, 'utf8')
+      expect(raw.endsWith('\n')).toBe(true)
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true })
+    }
+  })
+})

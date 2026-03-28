@@ -38,3 +38,20 @@ export interface EnvironmentsConfig {
   activeEnvironmentId: string
   environments: Environment[]
 }
+
+export interface LoadEnvironmentsRequest {
+  workspaceRootPath: string
+}
+
+export type LoadEnvironmentsResult =
+  | { status: 'loaded'; config: EnvironmentsConfig }
+  | { status: 'error'; message: string }
+
+export interface SaveEnvironmentsRequest {
+  workspaceRootPath: string
+  config: EnvironmentsConfig
+}
+
+export type SaveEnvironmentsResult =
+  | { status: 'saved'; config: EnvironmentsConfig }
+  | { status: 'error'; message: string }

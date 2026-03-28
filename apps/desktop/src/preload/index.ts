@@ -6,7 +6,11 @@ import type {
   LoadApiEditorRequest,
   LoadApiEditorResult,
   SaveApiEditorRequest,
-  SaveApiEditorResult
+  SaveApiEditorResult,
+  LoadEnvironmentsRequest,
+  LoadEnvironmentsResult,
+  SaveEnvironmentsRequest,
+  SaveEnvironmentsResult
 } from '@apicaramba/shared-types'
 
 /**
@@ -25,6 +29,8 @@ export interface AppBridge {
   validateOpenApi: (request: ValidateOpenApiRequest) => Promise<ValidateOpenApiResult>
   loadApiEditor: (request: LoadApiEditorRequest) => Promise<LoadApiEditorResult>
   saveApiEditor: (request: SaveApiEditorRequest) => Promise<SaveApiEditorResult>
+  loadEnvironments: (request: LoadEnvironmentsRequest) => Promise<LoadEnvironmentsResult>
+  saveEnvironments: (request: SaveEnvironmentsRequest) => Promise<SaveEnvironmentsResult>
   windowControls: {
     minimize: () => void
     toggleMaximize: () => void
@@ -48,6 +54,10 @@ const bridge: AppBridge = {
     ipcRenderer.invoke('openapi:load-editor', request) as Promise<LoadApiEditorResult>,
   saveApiEditor: (request: SaveApiEditorRequest) =>
     ipcRenderer.invoke('openapi:save-editor', request) as Promise<SaveApiEditorResult>,
+  loadEnvironments: (request: LoadEnvironmentsRequest) =>
+    ipcRenderer.invoke('environments:load', request) as Promise<LoadEnvironmentsResult>,
+  saveEnvironments: (request: SaveEnvironmentsRequest) =>
+    ipcRenderer.invoke('environments:save', request) as Promise<SaveEnvironmentsResult>,
   windowControls: {
     minimize: () => ipcRenderer.send('window:minimize'),
     toggleMaximize: () => ipcRenderer.send('window:toggle-maximize'),
