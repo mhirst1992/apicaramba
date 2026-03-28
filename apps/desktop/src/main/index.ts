@@ -15,6 +15,7 @@ import type {
 } from '@apicaramba/shared-types'
 
 const isDev = !app.isPackaged
+const appIconPath = resolve(__dirname, '../../resources/icon.ico')
 
 let mainWindow: BrowserWindow | null = null
 
@@ -25,6 +26,7 @@ function createWindow(): void {
     minWidth: 960,
     minHeight: 600,
     backgroundColor: '#0f1117',
+    icon: appIconPath,
     frame: false,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -138,6 +140,10 @@ async function handleSaveApiEditor(request: SaveApiEditorRequest): Promise<SaveA
 }
 
 app.whenReady().then(() => {
+  if (process.platform === 'win32') {
+    app.setAppUserModelId('com.apicaramba.desktop')
+  }
+
   ipcMain.handle('workspace:open', openWorkspaceDialog)
   ipcMain.handle('openapi:validate', (_, request: ValidateOpenApiRequest) => validateOpenApi(request))
   ipcMain.handle('openapi:load-editor', (_, request: LoadApiEditorRequest) => handleLoadApiEditor(request))
