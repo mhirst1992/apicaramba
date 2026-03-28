@@ -16,7 +16,11 @@ export type { WorkspaceMetadata, StructureConfig } from './metadata.js'
 export type {
   EnvironmentVariable,
   Environment,
-  EnvironmentsConfig
+  EnvironmentsConfig,
+  LoadEnvironmentsRequest,
+  LoadEnvironmentsResult,
+  SaveEnvironmentsRequest,
+  SaveEnvironmentsResult
 } from './environments.js'
 export type {
   ValidateOpenApiRequest,

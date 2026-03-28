@@ -235,3 +235,5 @@ function coerceSwaggerVersionForConversion(document: OpenApiDocument): OpenApiDo
 		swagger: '2.0'
 	}
 }
+
+export { loadEnvironmentsConfig, saveEnvironmentsConfig } from './environments.js'
