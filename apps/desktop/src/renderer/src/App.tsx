@@ -5,7 +5,9 @@ import type {
   ValidateOpenApiResult,
   ApiStructure,
   OperationDetail,
-  SaveApiEditorResult
+  SaveApiEditorResult,
+  EnvironmentsConfig,
+  Environment
 } from '@apicaramba/shared-types'
 import { EndpointTree } from './components/EndpointTree.js'
 import { OperationEditor } from './components/OperationEditor.js'
@@ -43,6 +45,12 @@ export default function App(): React.JSX.Element {
   // Validation
   const [validationResult, setValidationResult] = React.useState<ValidateOpenApiResult | null>(null)
   const [validating, setValidating] = React.useState(false)
+  const [environmentsConfig, setEnvironmentsConfig] = React.useState<EnvironmentsConfig | null>(null)
+  const [environmentsDraft, setEnvironmentsDraft] = React.useState<EnvironmentsConfig | null>(null)
+  const [environmentsLoading, setEnvironmentsLoading] = React.useState(false)
+  const [environmentsSaving, setEnvironmentsSaving] = React.useState(false)
+  const [environmentsError, setEnvironmentsError] = React.useState<string | null>(null)
+  const [environmentsMessage, setEnvironmentsMessage] = React.useState<string | null>(null)
 
   const selectedApi = React.useMemo(
     () => snapshot?.apis.find((a) => a.id === selectedApiId) ?? null,
@@ -75,6 +83,7 @@ export default function App(): React.JSX.Element {
       setSelectedOpKey(null)
       setSaveStatus('idle')
       setValidationResult(null)
+      await loadEnvironmentsForWorkspace(result.snapshot.workspace.rootPath)
       if (result.snapshot.apis[0]) {
         await loadEditorForApi(result.snapshot.workspace.rootPath, result.snapshot.apis[0])
       }
@@ -88,6 +97,70 @@ export default function App(): React.JSX.Element {
     setSelectedApiId(api.id)
     setValidationResult(null)
     await loadEditorForApi(snapshot.workspace.rootPath, api)
+  }
+
+  async function loadEnvironmentsForWorkspace(rootPath: string): Promise<void> {
+    setEnvironmentsLoading(true)
+    setEnvironmentsError(null)
+    setEnvironmentsMessage(null)
+
+    try {
+      const result = await window.appBridge.loadEnvironments({ workspaceRootPath: rootPath })
+      if (result.status === 'error') {
+        setEnvironmentsError(result.message)
+        setEnvironmentsConfig(null)
+        setEnvironmentsDraft(null)
+        return
+      }
+
+      setEnvironmentsConfig(result.config)
+      setEnvironmentsDraft(result.config)
+    } finally {
+      setEnvironmentsLoading(false)
+    }
+  }
+
+  function updateActiveEnvironment(patch: Partial<Environment>): void {
+    setEnvironmentsDraft((current) => {
+      if (!current) return current
+
+      const active = current.environments[0]
+      if (!active) return current
+
+      return {
+        ...current,
+        environments: [{ ...active, ...patch }]
+      }
+    })
+    setEnvironmentsMessage(null)
+    setEnvironmentsError(null)
+  }
+
+  async function onSaveEnvironments(): Promise<void> {
+    if (!snapshot || !environmentsDraft) {
+      return
+    }
+
+    setEnvironmentsSaving(true)
+    setEnvironmentsError(null)
+    try {
+      const result = await window.appBridge.saveEnvironments({
+        workspaceRootPath: snapshot.workspace.rootPath,
+        config: environmentsDraft
+      })
+
+      if (result.status === 'error') {
+        setEnvironmentsError(result.message)
+        return
+      }
+
+      setEnvironmentsConfig(result.config)
+      setEnvironmentsDraft(result.config)
+      setEnvironmentsMessage('Environment saved.')
+      setTimeout(() => setEnvironmentsMessage(null), 2500)
+    } finally {
+      setEnvironmentsSaving(false)
+    }
   }
 
   async function loadEditorForApi(rootPath: string, api: ApiSummary): Promise<void> {
@@ -154,6 +227,8 @@ export default function App(): React.JSX.Element {
   }
 
   const sideApis = snapshot?.apis ?? []
+  const activeEnvironment = environmentsDraft?.environments[0] ?? null
+  const environmentsDirty = JSON.stringify(environmentsConfig) !== JSON.stringify(environmentsDraft)
 
   return (
     <div className="flex flex-col h-full bg-surface-base text-slate-100">
@@ -262,6 +337,17 @@ export default function App(): React.JSX.Element {
             </div>
 
             <div className="flex-1 overflow-y-auto px-6 py-6">
+              <EnvironmentPanel
+                environment={activeEnvironment}
+                loading={environmentsLoading}
+                saving={environmentsSaving}
+                dirty={environmentsDirty}
+                error={environmentsError}
+                message={environmentsMessage}
+                onChangeName={(name) => updateActiveEnvironment({ name })}
+                onChangeBaseUrl={(baseUrl) => updateActiveEnvironment({ baseUrl })}
+                onSave={onSaveEnvironments}
+              />
               <SaveFeedback status={saveStatus} />
               {validationResult ? (
                 <div className="mb-5">
@@ -282,6 +368,77 @@ export default function App(): React.JSX.Element {
         </main>
       )}
       </div>
+    </div>
+  )
+}
+
+interface EnvironmentPanelProps {
+  environment: Environment | null
+  loading: boolean
+  saving: boolean
+  dirty: boolean
+  error: string | null
+  message: string | null
+  onChangeName: (value: string) => void
+  onChangeBaseUrl: (value: string) => void
+  onSave: () => void
+}
+
+function EnvironmentPanel(props: EnvironmentPanelProps): React.JSX.Element {
+  return (
+    <div className="mb-5 rounded-lg border border-surface-border bg-surface-lower px-4 py-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-slate-100">Environment</h3>
+          <p className="text-xs text-slate-400 mt-0.5">Single profile stored in .api-tool/environments.json</p>
+        </div>
+        <button
+          className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg border border-surface-border text-slate-300 hover:bg-surface-raised hover:text-slate-100 disabled:opacity-40 transition-colors"
+          disabled={props.loading || props.saving || !props.environment || !props.dirty}
+          onClick={props.onSave}
+        >
+          {props.saving ? 'Saving...' : 'Save Environment'}
+        </button>
+      </div>
+
+      {props.error ? (
+        <div className="mt-3 rounded-lg border border-secondary/60 bg-secondary/10 px-3 py-2 text-xs text-slate-300">
+          {props.error}
+        </div>
+      ) : null}
+
+      {props.message ? (
+        <div className="mt-3 rounded-lg border border-primary/50 bg-primary/10 px-3 py-2 text-xs text-slate-200">
+          {props.message}
+        </div>
+      ) : null}
+
+      {props.loading ? (
+        <p className="mt-3 text-xs text-slate-400">Loading environment...</p>
+      ) : props.environment ? (
+        <div className="mt-3 grid grid-cols-1 lg:grid-cols-2 gap-3">
+          <label className="flex flex-col gap-1">
+            <span className="text-xs text-slate-400">Name</span>
+            <input
+              value={props.environment.name}
+              onChange={(event) => props.onChangeName(event.target.value)}
+              className="rounded-lg border border-surface-border bg-surface-base px-3 py-2 text-sm text-slate-100 outline-none focus:border-primary/60"
+              placeholder="Default"
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs text-slate-400">Base URL</span>
+            <input
+              value={props.environment.baseUrl}
+              onChange={(event) => props.onChangeBaseUrl(event.target.value)}
+              className="rounded-lg border border-surface-border bg-surface-base px-3 py-2 text-sm text-slate-100 outline-none focus:border-primary/60"
+              placeholder="https://api.example.com"
+            />
+          </label>
+        </div>
+      ) : (
+        <p className="mt-3 text-xs text-slate-400">Environment profile unavailable.</p>
+      )}
     </div>
   )
 }
