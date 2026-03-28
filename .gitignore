@@ -1,6 +1,9 @@
 # AI / local agent instructions (never committed)
 _ai/
 
+# Testing folders
+.api-tool/
+
 # Dependencies
 node_modules/
 .pnp

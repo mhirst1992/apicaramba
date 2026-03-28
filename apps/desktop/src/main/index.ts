@@ -60,7 +60,7 @@ function createWindow(): void {
 async function openWorkspaceDialog(): Promise<OpenWorkspaceResult> {
   const result = await dialog.showOpenDialog({
     properties: ['openDirectory'],
-    title: 'Open APICaramba Workspace'
+    title: 'Open {api:caramba} Workspace'
   })
 
   if (result.canceled || result.filePaths.length === 0) {

@@ -926,8 +926,9 @@ function BrandLogo(): React.JSX.Element {
       <span className="text-accent mr-1.5">{'>'}</span>
       <span className="text-accent">{'{'}</span>
       <span className="text-primary">api</span>
-      <span className="text-accent mr-1">{'}'}</span>
+      <span className="text-accent">{':'}</span>
       <span className="text-secondary">caramba</span>
+      <span className="text-accent">{'}'}</span>
     </span>
   )
 }
