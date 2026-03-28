@@ -23,3 +23,10 @@ export type {
   OpenApiValidationIssue,
   ValidateOpenApiResult
 } from './validation.js'
+export type {
+  OperationDetail,
+  LoadApiEditorRequest,
+  LoadApiEditorResult,
+  SaveApiEditorRequest,
+  SaveApiEditorResult
+} from './editor.js'

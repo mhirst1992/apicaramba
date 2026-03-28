@@ -3,6 +3,8 @@ import path from 'node:path'
 import type { HttpMethod, WorkspaceSnapshot, OperationSummary } from '@apicaramba/shared-types'
 import swagger2openapi from 'swagger2openapi'
 
+export { loadApiEditor, buildUpdatedDocument, saveStructure } from './editor.js'
+
 const OPENAPI_FILE = 'openapi.json'
 const OPENAPI_METHODS = ['get', 'post', 'put', 'patch', 'delete', 'head', 'options', 'trace'] as const
 const IGNORED_DIRECTORIES = new Set(['.git', 'node_modules', '.api-tool'])

@@ -1,24 +1,31 @@
-import { app, BrowserWindow, dialog, ipcMain } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, IpcMainEvent } from 'electron'
 import { promises as fs } from 'node:fs'
-import { join } from 'path'
-import { loadWorkspaceSnapshot } from '@apicaramba/core-model'
+import { join, resolve } from 'path'
+import { loadWorkspaceSnapshot, loadApiEditor, buildUpdatedDocument, saveStructure } from '@apicaramba/core-model'
 import { validateOpenApiDocument } from '@apicaramba/validation'
+import { writeJsonFile } from '@apicaramba/import-export'
 import type {
   OpenWorkspaceResult,
   ValidateOpenApiRequest,
-  ValidateOpenApiResult
+  ValidateOpenApiResult,
+  LoadApiEditorRequest,
+  LoadApiEditorResult,
+  SaveApiEditorRequest,
+  SaveApiEditorResult
 } from '@apicaramba/shared-types'
 
 const isDev = !app.isPackaged
 
+let mainWindow: BrowserWindow | null = null
+
 function createWindow(): void {
-  const mainWindow = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
     minWidth: 960,
     minHeight: 600,
     backgroundColor: '#0f1117',
-    titleBarStyle: 'hiddenInset',
+    frame: false,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
@@ -26,6 +33,9 @@ function createWindow(): void {
       nodeIntegration: false
     }
   })
+
+  mainWindow.on('maximize', () => mainWindow?.webContents.send('window:maximized'))
+  mainWindow.on('unmaximize', () => mainWindow?.webContents.send('window:unmaximized'))
 
   if (isDev && process.env['ELECTRON_RENDERER_URL']) {
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
@@ -74,9 +84,71 @@ async function validateOpenApi(request: ValidateOpenApiRequest): Promise<Validat
   return validateOpenApiDocument(request)
 }
 
+async function handleLoadApiEditor(request: LoadApiEditorRequest): Promise<LoadApiEditorResult> {
+  try {
+    const { structure, operations } = await loadApiEditor(
+      request.workspaceRootPath,
+      request.openapiRelativePath
+    )
+    return { status: 'loaded', structure, operations }
+  } catch (error) {
+    return { status: 'error', message: error instanceof Error ? error.message : 'Failed to load API.' }
+  }
+}
+
+async function handleSaveApiEditor(request: SaveApiEditorRequest): Promise<SaveApiEditorResult> {
+  const absPath = resolve(request.workspaceRootPath, request.openapiRelativePath)
+  const tempPath = absPath + '.tmp'
+
+  try {
+    const rawJson = await fs.readFile(absPath, 'utf8')
+    const updatedJson = buildUpdatedDocument(rawJson, request.operations)
+
+    // Write to temp file first so we can validate without touching the real file
+    await fs.writeFile(tempPath, updatedJson, 'utf8')
+
+    const validationResult = await validateOpenApiDocument({
+      workspaceRootPath: request.workspaceRootPath,
+      openapiRelativePath: request.openapiRelativePath + '.tmp'
+    })
+
+    if (validationResult.status === 'invalid') {
+      await fs.unlink(tempPath).catch(() => undefined)
+      return { status: 'validation-failed', issueCount: validationResult.issueCount, issues: validationResult.issues }
+    }
+
+    if (validationResult.status === 'error') {
+      await fs.unlink(tempPath).catch(() => undefined)
+      return { status: 'validation-failed', issueCount: 1, issues: [{ message: validationResult.message, path: null }] }
+    }
+
+    // Validation passed — commit the write
+    await writeJsonFile(absPath, JSON.parse(updatedJson) as unknown)
+    await fs.unlink(tempPath).catch(() => undefined)
+
+    // Persist structure (creates .api-tool/ if not present)
+    const { structure } = await loadApiEditor(request.workspaceRootPath, request.openapiRelativePath)
+    await saveStructure(request.workspaceRootPath, structure)
+
+    return { status: 'saved' }
+  } catch (error) {
+    await fs.unlink(tempPath).catch(() => undefined)
+    return { status: 'error', message: error instanceof Error ? error.message : 'Save failed.' }
+  }
+}
+
 app.whenReady().then(() => {
   ipcMain.handle('workspace:open', openWorkspaceDialog)
   ipcMain.handle('openapi:validate', (_, request: ValidateOpenApiRequest) => validateOpenApi(request))
+  ipcMain.handle('openapi:load-editor', (_, request: LoadApiEditorRequest) => handleLoadApiEditor(request))
+  ipcMain.handle('openapi:save-editor', (_, request: SaveApiEditorRequest) => handleSaveApiEditor(request))
+  ipcMain.on('window:minimize', (_e: IpcMainEvent) => mainWindow?.minimize())
+  ipcMain.on('window:toggle-maximize', (_e: IpcMainEvent) => {
+    if (mainWindow?.isMaximized()) mainWindow.unmaximize()
+    else mainWindow?.maximize()
+  })
+  ipcMain.on('window:close', (_e: IpcMainEvent) => mainWindow?.close())
+  ipcMain.handle('window:is-maximized', () => mainWindow?.isMaximized() ?? false)
 
   createWindow()
 
@@ -96,4 +168,10 @@ app.on('window-all-closed', () => {
 app.on('will-quit', () => {
   ipcMain.removeHandler('workspace:open')
   ipcMain.removeHandler('openapi:validate')
+  ipcMain.removeHandler('openapi:load-editor')
+  ipcMain.removeHandler('openapi:save-editor')
+  ipcMain.removeAllListeners('window:minimize')
+  ipcMain.removeAllListeners('window:toggle-maximize')
+  ipcMain.removeAllListeners('window:close')
+  ipcMain.removeHandler('window:is-maximized')
 })
