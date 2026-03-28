@@ -6,7 +6,7 @@ import { loadWorkspaceSnapshot } from './index.js'
 
 describe('loadWorkspaceSnapshot', () => {
 	it('converts swagger 2.0 json to OpenAPI 3.x while loading API summaries', async () => {
-		const fixturePath = path.resolve(process.cwd(), '_example', 'openapi.json')
+		const fixturePath = path.resolve(process.cwd(), '_example', 'openapi2.json')
 		const fixtureJson = await readFile(fixturePath, 'utf8')
 
 		const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'apicaramba-swagger-fixture-'))

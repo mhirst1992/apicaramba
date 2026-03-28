@@ -1,5 +1,23 @@
 @import "tailwindcss";
 
+@theme {
+  /* Brand palette */
+  --color-primary: #6C7D47;
+  --color-secondary: #BC4B51;
+  --color-accent: #FACC15;
+  --color-dark: #111827;
+  --color-light: #F9FAFB;
+
+  /* Surface layers (dark mode) */
+  --color-surface-lower: #0c1117;
+  --color-surface-base: #111827;
+  --color-surface-raised: #161f2e;
+  --color-surface-border: #1e2d3d;
+
+  /* Monospace font — JetBrains Mono preferred */
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, 'Cascadia Code', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+}
+
 @layer base {
   *,
   *::before,

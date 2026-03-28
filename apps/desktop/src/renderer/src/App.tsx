@@ -66,14 +66,11 @@ export default function App(): React.JSX.Element {
   const sideApis = snapshot?.apis ?? []
 
   return (
-    <div className="flex h-full bg-[#0f1117] text-slate-100">
+    <div className="flex h-full bg-surface-base text-slate-100">
       {/* Sidebar */}
-      <aside className="w-56 shrink-0 flex flex-col bg-[#161b22] border-r border-[#21262d]">
-        <div className="flex items-center gap-2.5 px-4 h-12 border-b border-[#21262d] shrink-0">
-          <ApiIcon />
-          <span className="text-sm font-semibold tracking-tight text-slate-100">
-            APICaramba
-          </span>
+      <aside className="w-56 shrink-0 flex flex-col bg-surface-lower border-r border-surface-border">
+        <div className="flex items-center px-4 h-12 border-b border-surface-border shrink-0">
+          <BrandLogo />
         </div>
         <div className="flex-1 flex flex-col items-start px-3 pt-4 gap-1">
           {sideApis.length === 0 ? (
@@ -106,7 +103,7 @@ export default function App(): React.JSX.Element {
               </p>
             </div>
             <button
-              className="inline-flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 disabled:bg-indigo-800/70 disabled:text-slate-300 text-white text-sm font-medium rounded-lg transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500"
+              className="inline-flex items-center gap-2 px-5 py-2.5 bg-primary hover:bg-primary/80 active:bg-primary/70 disabled:bg-primary/30 disabled:text-slate-400 text-white text-sm font-medium rounded-lg transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               onClick={onOpenWorkspace}
               disabled={loading}
             >
@@ -125,7 +122,7 @@ export default function App(): React.JSX.Element {
           ) : (
             <div className="mt-8 grid grid-cols-1 xl:grid-cols-2 gap-4">
               {snapshot.apis.length === 0 ? (
-                <div className="rounded-xl border border-[#21262d] bg-[#161b22] p-5 text-sm text-slate-400">
+                <div className="rounded-xl border border-surface-border bg-surface-raised p-5 text-sm text-slate-400">
                   No openapi.json files were found in this repository.
                 </div>
               ) : (
@@ -137,14 +134,14 @@ export default function App(): React.JSX.Element {
           )}
 
           {selectedApi ? (
-            <div className="mt-8 rounded-xl border border-[#21262d] bg-[#111723] p-5">
+            <div className="mt-8 rounded-xl border border-surface-border bg-surface-lower p-5">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <h2 className="text-lg font-semibold text-slate-100">Operations</h2>
                   <p className="text-sm text-slate-400 mt-1">{selectedApi.openapiPath}</p>
                 </div>
                 <button
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-700 hover:bg-emerald-600 active:bg-emerald-800 disabled:bg-emerald-900/70 disabled:text-slate-300 text-white text-sm font-medium rounded-lg transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500"
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-secondary hover:bg-secondary/80 active:bg-secondary/70 disabled:bg-secondary/30 disabled:text-slate-400 text-white text-sm font-medium rounded-lg transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-secondary"
                   onClick={onValidateSelectedApi}
                   disabled={validating}
                 >
@@ -161,9 +158,9 @@ export default function App(): React.JSX.Element {
                   selectedApi.operations.map((operation) => (
                     <li
                       key={`${operation.method}:${operation.path}:${operation.operationId ?? ''}`}
-                      className="rounded-lg border border-[#21262d] bg-[#0f1117] px-3 py-2 text-sm"
+                      className="rounded-lg border border-surface-border bg-surface-base px-3 py-2 text-sm"
                     >
-                      <span className="text-indigo-300 font-semibold mr-3">{operation.method}</span>
+                      <span className="text-accent font-mono font-semibold mr-3">{operation.method}</span>
                       <span className="text-slate-200">{operation.path}</span>
                       {operation.operationId ? (
                         <span className="text-slate-500 ml-3">{operation.operationId}</span>
@@ -230,7 +227,7 @@ function ValidationResultPanel(props: ValidationResultPanelProps): React.JSX.Ele
 function EmptyState(): React.JSX.Element {
   return (
     <div className="mt-10 flex flex-col items-center text-center gap-5 max-w-[460px] px-2">
-      <div className="w-16 h-16 rounded-2xl bg-indigo-500/10 flex items-center justify-center">
+      <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center">
         <WorkspaceIcon />
       </div>
       <div className="space-y-2">
@@ -254,8 +251,8 @@ function ApiListItem(props: ApiListItemProps): React.JSX.Element {
     <button
       className={`w-full text-left px-2.5 py-2 rounded-md border transition-colors ${
         props.isSelected
-          ? 'bg-indigo-500/20 border-indigo-400/40 text-slate-100'
-          : 'border-transparent text-slate-300 hover:bg-[#1b2230] hover:text-slate-100'
+          ? 'bg-primary/15 border-primary/35 text-slate-100'
+          : 'border-transparent text-slate-300 hover:bg-surface-raised hover:text-slate-100'
       }`}
       onClick={props.onClick}
     >
@@ -274,7 +271,7 @@ function ApiCard(props: ApiCardProps): React.JSX.Element {
   return (
     <div
       className={`rounded-xl border p-5 ${
-        props.selected ? 'border-indigo-500/50 bg-indigo-500/10' : 'border-[#21262d] bg-[#161b22]'
+        props.selected ? 'border-primary/50 bg-primary/10' : 'border-surface-border bg-surface-raised'
       }`}
     >
       <div className="flex items-start justify-between gap-3">
@@ -282,7 +279,7 @@ function ApiCard(props: ApiCardProps): React.JSX.Element {
           <h3 className="text-base font-semibold text-slate-100">{props.api.name}</h3>
           <p className="text-xs text-slate-500 mt-1">{props.api.path || '/'}</p>
         </div>
-        <span className="text-xs px-2 py-1 rounded-full bg-[#0f1117] border border-[#273047] text-slate-300">
+        <span className="text-xs px-2 py-1 rounded-full bg-surface-base border border-surface-border text-slate-300">
           {props.api.operationCount} ops
         </span>
       </div>
@@ -292,19 +289,18 @@ function ApiCard(props: ApiCardProps): React.JSX.Element {
   )
 }
 
-function ApiIcon(): React.JSX.Element {
+function BrandLogo(): React.JSX.Element {
   return (
-    <svg
-      width="18"
-      height="18"
-      viewBox="0 0 18 18"
-      fill="none"
-      aria-hidden="true"
-      className="text-indigo-400 shrink-0"
+    <span
+      className="flex items-baseline font-mono text-sm font-bold leading-none"
+      aria-label="APICaramba"
     >
-      <rect x="1" y="1" width="16" height="16" rx="3" stroke="currentColor" strokeWidth="1.5" />
-      <path d="M5 9h8M9 5v8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-    </svg>
+      <span className="text-accent mr-1.5">{'>'}</span>
+      <span className="text-accent">{'{'}</span>
+      <span className="text-primary">api</span>
+      <span className="text-accent mr-1">{'}'}</span>
+      <span className="text-secondary">caramba</span>
+    </span>
   )
 }
 
@@ -316,7 +312,7 @@ function WorkspaceIcon(): React.JSX.Element {
       viewBox="0 0 32 32"
       fill="none"
       aria-hidden="true"
-      className="text-indigo-400"
+      className="text-primary"
     >
       <path
         d="M4 8a4 4 0 014-4h16a4 4 0 014 4v16a4 4 0 01-4 4H8a4 4 0 01-4-4V8z"
@@ -339,7 +335,7 @@ function SidebarPlaceholder(): React.JSX.Element {
       {[80, 60, 70].map((w, i) => (
         <div
           key={i}
-          className="h-5 rounded bg-[#21262d] animate-pulse"
+          className="h-5 rounded bg-surface-border animate-pulse"
           style={{ width: `${w}%` }}
         />
       ))}
