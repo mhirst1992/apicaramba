@@ -1010,6 +1010,10 @@ export default function App(): React.JSX.Element {
                       selectedOperationKey={selectedOpKey}
                       onSelectFolder={onSelectFolder}
                       onSelectOperation={onSelectOperation}
+                      schemas={mergedSchemas}
+                      selectedSchemaId={selectedSchemaId}
+                      onSelectSchema={setSelectedSchemaId}
+                      onCreateSchema={() => setShowCreateSchemaModal(true)}
                       schemaCount={mergedSchemas.length}
                       schemasFolderId={SCHEMAS_FOLDER_ID}
                       draggingOperationId={draggingOperationId}
@@ -1182,24 +1186,6 @@ export default function App(): React.JSX.Element {
               ) : null}
               {selectedFolderId === SCHEMAS_FOLDER_ID ? (
                 <div className="flex flex-col gap-4">
-                  <div className="flex items-center gap-2">
-                    <select
-                      className="max-w-md bg-surface-lower border border-surface-border rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-primary/60"
-                      value={selectedSchemaId ?? ''}
-                      onChange={(event) => setSelectedSchemaId(event.target.value || null)}
-                    >
-                      <option value="">Select a schema</option>
-                      {mergedSchemas.map((schema) => (
-                        <option key={schema.id} value={schema.id}>{schema.name}</option>
-                      ))}
-                    </select>
-                    <button
-                      className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg border border-primary/35 text-slate-200 hover:bg-primary/15 transition-colors"
-                      onClick={() => setShowCreateSchemaModal(true)}
-                    >
-                      New Schema
-                    </button>
-                  </div>
                   {selectedSchema ? (
                     <SchemaEditor
                       schema={selectedSchema}

@@ -1,5 +1,5 @@
 import React from 'react'
-import type { ApiStructure, FolderNode, OperationRef } from '@apicaramba/shared-types'
+import type { ApiStructure, FolderNode, OperationRef, SchemaDetail } from '@apicaramba/shared-types'
 
 const ROOT_DROP_TARGET = '__root__'
 
@@ -10,6 +10,10 @@ interface Props {
   onSelectFolder: (folderId: string | null) => void
   onSelectOperation: (operationKey: string, folderId: string | null) => void
   schemasFolderId: string
+  schemas: SchemaDetail[]
+  selectedSchemaId: string | null
+  onSelectSchema: (schemaId: string) => void
+  onCreateSchema: () => void
   schemaCount: number
   draggingOperationId: string | null
   onOperationDragStart: (operationId: string) => void
@@ -300,6 +304,10 @@ export function EndpointTree({
   onSelectFolder,
   onSelectOperation,
   schemasFolderId,
+  schemas,
+  selectedSchemaId,
+  onSelectSchema,
+  onCreateSchema,
   schemaCount,
   draggingOperationId,
   onDropOperation,
@@ -313,6 +321,7 @@ export function EndpointTree({
   onDeleteFolder
 }: Props): React.JSX.Element {
   const [hoveredDropTarget, setHoveredDropTarget] = React.useState<string | null>(null)
+  const [schemasOpen, setSchemasOpen] = React.useState(true)
 
   return (
     <div className="flex flex-col gap-1.5">
@@ -401,10 +410,55 @@ export function EndpointTree({
             : 'border-transparent text-slate-300 hover:bg-surface-raised'
         }`}
       >
-        <button className="w-full text-left truncate" title="Schemas" onClick={() => onSelectFolder(schemasFolderId)}>
-          Schemas <span className="text-slate-500">({schemaCount})</span>
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            className="text-slate-500 hover:text-slate-300 shrink-0"
+            onClick={() => setSchemasOpen((value) => !value)}
+            title={schemasOpen ? 'Collapse folder' : 'Expand folder'}
+          >
+            {schemasOpen ? '▾' : '▸'}
+          </button>
+          <button className="flex-1 text-left truncate" title="Schemas" onClick={() => onSelectFolder(schemasFolderId)}>
+            Schemas <span className="text-slate-500">({schemaCount})</span>
+          </button>
+          <button
+            className="inline-flex items-center justify-center rounded border border-surface-border px-1.5 py-1 text-slate-400 hover:text-slate-100 hover:bg-surface-raised transition-colors"
+            title="New Schema"
+            aria-label="New Schema"
+            onClick={onCreateSchema}
+          >
+            +
+          </button>
+        </div>
       </div>
+
+      {schemasOpen ? (
+        <div className="flex flex-col gap-1">
+          {schemas.map((schema) => (
+            <button
+              key={schema.id}
+              className={`ml-[14px] rounded-md border px-2.5 py-2 text-left text-sm transition-colors ${
+                selectedFolderId === schemasFolderId && selectedSchemaId === schema.id
+                  ? 'bg-primary/15 border-primary/35 text-slate-100'
+                  : 'border-transparent text-slate-300 hover:bg-surface-raised'
+              }`}
+              title={schema.name}
+              onClick={() => {
+                onSelectFolder(schemasFolderId)
+                onSelectSchema(schema.id)
+              }}
+            >
+              <span className="inline-block max-w-[80%] truncate font-mono align-middle">{schema.name}</span>
+              <span className="ml-2 rounded border border-surface-border bg-surface-lower px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-slate-300">
+                {schema.usageTag ?? 'Both'}
+              </span>
+            </button>
+          ))}
+          {schemas.length === 0 ? (
+            <p className="ml-[14px] px-2.5 py-1 text-xs text-slate-500">No schemas yet.</p>
+          ) : null}
+        </div>
+      ) : null}
 
       {draggingFolderId ? (
         <div
