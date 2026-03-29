@@ -44,9 +44,24 @@
         "description": { "type": "string" }
       }
     },
+    "EnvironmentParameter": {
+      "type": "object",
+      "required": ["id", "name", "in", "required"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "in": {
+          "type": "string",
+          "enum": ["query", "header", "path", "cookie"]
+        },
+        "description": { "type": "string" },
+        "required": { "type": "boolean" }
+      }
+    },
     "Environment": {
       "type": "object",
-      "required": ["id", "name", "baseUrl", "variables"],
+      "required": ["id", "name", "baseUrl", "variables", "parameters"],
       "additionalProperties": false,
       "properties": {
         "id": { "type": "string" },
@@ -58,6 +73,10 @@
         "variables": {
           "type": "array",
           "items": { "$ref": "#/$defs/EnvironmentVariable" }
+        },
+        "parameters": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/EnvironmentParameter" }
         }
       }
     }
