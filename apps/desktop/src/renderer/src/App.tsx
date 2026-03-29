@@ -547,48 +547,48 @@ export default function App(): React.JSX.Element {
             <SidebarPlaceholder />
           ) : (
             sideApis.map((api) => (
-              <ApiDropdownCard
-                key={api.id}
-                api={api}
-                isSelected={selectedApiId === api.id}
-                isMenuOpen={openApiMenuId === api.id}
-                onToggleMenu={() => setOpenApiMenuId((current) => current === api.id ? null : api.id)}
-                onSelect={() => { void onSelectApi(api) }}
-                onEnvironment={() => {
-                  setShowEnvironmentPanel(true)
-                  setOpenApiMenuId(null)
-                }}
-                onNewFolder={() => {
-                  if (selectedApiId === api.id) {
-                    onCreateFolder()
-                  } else {
-                    void onSelectApi(api).then(() => onCreateFolder())
-                  }
-                  setOpenApiMenuId(null)
-                }}
-                onNewRequest={() => {
-                  window.alert('New Request is stubbed for this phase.')
-                  setOpenApiMenuId(null)
-                }}
-              />
+              <React.Fragment key={api.id}>
+                <ApiDropdownCard
+                  api={api}
+                  isSelected={selectedApiId === api.id}
+                  isMenuOpen={openApiMenuId === api.id}
+                  onToggleMenu={() => setOpenApiMenuId((current) => current === api.id ? null : api.id)}
+                  onSelect={() => { void onSelectApi(api) }}
+                  onEnvironment={() => {
+                    setShowEnvironmentPanel(true)
+                    setOpenApiMenuId(null)
+                  }}
+                  onNewFolder={() => {
+                    if (selectedApiId === api.id) {
+                      onCreateFolder()
+                    } else {
+                      void onSelectApi(api).then(() => onCreateFolder())
+                    }
+                    setOpenApiMenuId(null)
+                  }}
+                  onNewRequest={() => {
+                    window.alert('New Request is stubbed for this phase.')
+                    setOpenApiMenuId(null)
+                  }}
+                />
+                {editorState && selectedApiId === api.id ? (
+                  <div className="mb-1 rounded-lg border border-surface-border bg-surface-base px-2 py-2">
+                    <EndpointTree
+                      structure={editorState.structure}
+                      selectedFolderId={selectedFolderId}
+                      onSelectFolder={setSelectedFolderId}
+                      draggingOperationId={draggingOperationId}
+                      onDropOperation={onDropOperation}
+                      draggingFolderId={draggingFolderId}
+                      onFolderDragStart={setDraggingFolderId}
+                      onFolderDragEnd={() => setDraggingFolderId(null)}
+                      onDropFolder={onDropFolder}
+                    />
+                  </div>
+                ) : null}
+              </React.Fragment>
             ))
           )}
-
-          {editorState && selectedApiId ? (
-            <div className="mt-1 rounded-lg border border-surface-border bg-surface-base px-2 py-2">
-              <EndpointTree
-                structure={editorState.structure}
-                selectedFolderId={selectedFolderId}
-                onSelectFolder={setSelectedFolderId}
-                draggingOperationId={draggingOperationId}
-                onDropOperation={onDropOperation}
-                draggingFolderId={draggingFolderId}
-                onFolderDragStart={setDraggingFolderId}
-                onFolderDragEnd={() => setDraggingFolderId(null)}
-                onDropFolder={onDropFolder}
-              />
-            </div>
-          ) : null}
         </div>
         {snapshot ? (
           <div className="px-3 pb-3 shrink-0 flex gap-2">
