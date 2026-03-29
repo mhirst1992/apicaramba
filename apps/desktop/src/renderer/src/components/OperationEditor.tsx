@@ -20,6 +20,17 @@ const METHOD_COLOURS: Record<string, string> = {
   TRACE: 'text-slate-400'
 }
 
+const METHOD_OPTION_COLOURS: Record<HttpMethod, string> = {
+  GET: '#6C7D47',
+  POST: '#FACC15',
+  PUT: '#60A5FA',
+  PATCH: '#C084FC',
+  DELETE: '#BC4B51',
+  HEAD: '#94A3B8',
+  OPTIONS: '#94A3B8',
+  TRACE: '#94A3B8'
+}
+
 const METHOD_OPTIONS: HttpMethod[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS', 'TRACE']
 
 export function OperationEditor({ operation, availableParameters, requestSchemas, responseSchemas, onChange }: Props): React.JSX.Element {
@@ -105,7 +116,9 @@ export function OperationEditor({ operation, availableParameters, requestSchemas
             onChange={(event) => update({ method: event.target.value as HttpMethod })}
           >
             {METHOD_OPTIONS.map((method) => (
-              <option key={method} value={method}>{method}</option>
+              <option key={method} value={method} style={{ color: METHOD_OPTION_COLOURS[method] }}>
+                {method}
+              </option>
             ))}
           </select>
           <input
