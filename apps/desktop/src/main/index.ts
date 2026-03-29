@@ -1,6 +1,8 @@
 import { app, BrowserWindow, dialog, ipcMain, IpcMainEvent } from 'electron'
+import { execFile } from 'node:child_process'
 import { promises as fs } from 'node:fs'
 import { dirname, join, resolve } from 'path'
+import { promisify } from 'node:util'
 import {
   loadWorkspaceSnapshot,
   loadApiEditor,
@@ -42,17 +44,9 @@ const isDev = !app.isPackaged
 const appIconPath = resolve(__dirname, '../../resources/icon.ico')
 const RECENT_WORKSPACES_FILE = 'recent-workspaces.json'
 const RECENT_WORKSPACES_MAX = 8
+const execFileAsync = promisify(execFile)
 
 let mainWindow: BrowserWindow | null = null
-
-interface BootstrapOpenApiDocument {
-  openapi: string
-  info: {
-    title: string
-    version: string
-  }
-  paths: Record<string, never>
-}
 
 interface RecentWorkspacesConfig {
   version: string
@@ -66,6 +60,47 @@ interface NewApiDocument {
     version: string
   }
   paths: Record<string, never>
+}
+
+function normalizePathForCompare(input: string): string {
+  const resolved = resolve(input)
+  return process.platform === 'win32' ? resolved.toLowerCase() : resolved
+}
+
+async function assertWorkspaceRepoRoot(workspacePath: string): Promise<void> {
+  try {
+    const { stdout } = await execFileAsync('git', ['rev-parse', '--show-toplevel'], {
+      cwd: workspacePath
+    })
+
+    const repoRoot = stdout.trim()
+    if (!repoRoot) {
+      throw new Error('Selected folder is not a Git repository.')
+    }
+
+    if (normalizePathForCompare(repoRoot) !== normalizePathForCompare(workspacePath)) {
+      throw new Error('Select the workspace repository root, not a nested API folder.')
+    }
+  } catch (error) {
+    if (error instanceof Error) {
+      throw new Error(error.message.includes('nested API folder')
+        ? error.message
+        : 'Selected folder is not a Git repository root.')
+    }
+    throw new Error('Selected folder is not a Git repository root.')
+  }
+}
+
+async function initializeWorkspaceRepository(workspacePath: string): Promise<void> {
+  try {
+    await execFileAsync('git', ['init'], { cwd: workspacePath })
+  } catch (error) {
+    throw new Error(
+      error instanceof Error
+        ? `Failed to initialize Git repository: ${error.message}`
+        : 'Failed to initialize Git repository.'
+    )
+  }
 }
 
 function toJsonOpenApiRelativePath(relativePath: string): string {
@@ -141,6 +176,7 @@ async function openWorkspaceDialog(): Promise<OpenWorkspaceResult> {
   }
 
   try {
+    await assertWorkspaceRepoRoot(selectedPath)
     const snapshot = await loadWorkspaceSnapshot(selectedPath)
     await addRecentWorkspace(snapshot.workspace)
     return { status: 'selected', snapshot }
@@ -157,8 +193,13 @@ async function createWorkspaceDialog(
   request: CreateWorkspaceRequest
 ): Promise<CreateWorkspaceResult> {
   const workspaceName = request.name.trim()
+  const firstApiName = request.firstApiName.trim()
   if (!workspaceName) {
     return { status: 'error', message: 'Workspace name is required.' }
+  }
+
+  if (!firstApiName) {
+    return { status: 'error', message: 'First API name is required.' }
   }
 
   const locationResult = await dialog.showOpenDialog({
@@ -194,7 +235,8 @@ async function createWorkspaceDialog(
   }
 
   try {
-    await createWorkspaceBootstrapFiles(workspacePath, workspaceName)
+    await initializeWorkspaceRepository(workspacePath)
+    await createWorkspaceBootstrapFiles(workspacePath, firstApiName)
   } catch (error) {
     return {
       status: 'error',
@@ -287,6 +329,7 @@ async function handleOpenRecentWorkspace(
   }
 
   try {
+    await assertWorkspaceRepoRoot(rootPath)
     const snapshot = await loadWorkspaceSnapshot(rootPath)
     await addRecentWorkspace(snapshot.workspace)
     return { status: 'selected', snapshot }
@@ -331,20 +374,10 @@ async function handleCreateApi(request: CreateApiRequest): Promise<CreateApiResu
     return { status: 'error', message: 'API name is required.' }
   }
 
-  const baseFileName = slugifyFileStem(apiName)
+  const baseFolderName = slugifyFileStem(apiName)
 
   try {
-    const fileName = await resolveUniqueApiFileName(workspaceRootPath, baseFileName)
-    const apiDoc: NewApiDocument = {
-      openapi: '3.0.3',
-      info: {
-        title: apiName,
-        version: '1.0.0'
-      },
-      paths: {}
-    }
-
-    await writeJsonFile(join(workspaceRootPath, fileName), apiDoc)
+    await createApiFolder(workspaceRootPath, baseFolderName, apiName)
 
     const snapshot = await loadWorkspaceSnapshot(workspaceRootPath)
     return { status: 'created', snapshot }
@@ -367,53 +400,50 @@ function slugifyFileStem(input: string): string {
   return stem.length > 0 ? stem : 'api'
 }
 
-async function resolveUniqueApiFileName(workspaceRootPath: string, baseStem: string): Promise<string> {
+async function resolveUniqueApiFolderName(workspaceRootPath: string, baseStem: string): Promise<string> {
   let index = 0
 
   while (index < 1000) {
-    const fileName = index === 0 ? `${baseStem}.json` : `${baseStem}-${index + 1}.json`
-    const candidatePath = join(workspaceRootPath, fileName)
+    const folderName = index === 0 ? baseStem : `${baseStem}-${index + 1}`
+    const candidatePath = join(workspaceRootPath, folderName)
 
     try {
       await fs.access(candidatePath)
       index += 1
       continue
     } catch {
-      return fileName
+      return folderName
     }
   }
 
-  throw new Error('Could not allocate a filename for the new API.')
+  throw new Error('Could not allocate a folder name for the new API.')
 }
 
-async function createWorkspaceBootstrapFiles(
-  workspacePath: string,
-  workspaceName: string
+async function createApiFolder(
+  workspaceRootPath: string,
+  baseFolderName: string,
+  apiName: string
 ): Promise<void> {
-  const openapiPath = join(workspacePath, 'openapi.json')
-  const openapiDoc: BootstrapOpenApiDocument = {
+  const folderName = await resolveUniqueApiFolderName(workspaceRootPath, baseFolderName)
+  const apiPath = join(workspaceRootPath, folderName)
+  const apiDoc: NewApiDocument = {
     openapi: '3.0.3',
     info: {
-      title: workspaceName,
+      title: apiName,
       version: '1.0.0'
     },
     paths: {}
   }
 
-  await writeJsonFile(openapiPath, openapiDoc)
+  await fs.mkdir(apiPath, { recursive: false })
+  await writeJsonFile(join(apiPath, 'openapi.json'), apiDoc)
+}
 
-  await saveStructure(workspacePath, {
-    id: 'openapi.json',
-    name: workspaceName,
-    path: '',
-    rootFolder: {
-      id: 'openapi.json__root',
-      name: 'root',
-      children: [],
-      operations: []
-    },
-    ungrouped: []
-  })
+async function createWorkspaceBootstrapFiles(
+  workspacePath: string,
+  firstApiName: string
+): Promise<void> {
+  await createApiFolder(workspacePath, slugifyFileStem(firstApiName), firstApiName)
 
   await saveEnvironmentsConfig(workspacePath, {
     version: '1.0.0',

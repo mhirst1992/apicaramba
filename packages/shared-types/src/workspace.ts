@@ -35,6 +35,7 @@ export interface WorkspaceSnapshot {
 
 export interface CreateWorkspaceRequest {
   name: string
+  firstApiName: string
 }
 
 export interface RecentWorkspace {

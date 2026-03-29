@@ -66,6 +66,7 @@ export default function App(): React.JSX.Element {
   const [newFolderName, setNewFolderName] = React.useState('')
   const [showCreateWorkspaceModal, setShowCreateWorkspaceModal] = React.useState(false)
   const [newWorkspaceName, setNewWorkspaceName] = React.useState('')
+  const [newWorkspaceFirstApiName, setNewWorkspaceFirstApiName] = React.useState('')
   const [recentWorkspaces, setRecentWorkspaces] = React.useState<RecentWorkspace[]>([])
   const [showCreateApiModal, setShowCreateApiModal] = React.useState(false)
   const [newApiName, setNewApiName] = React.useState('')
@@ -138,15 +139,21 @@ export default function App(): React.JSX.Element {
 
   async function onCreateWorkspace(): Promise<void> {
     const name = newWorkspaceName.trim()
+    const firstApiName = newWorkspaceFirstApiName.trim()
     if (!name) {
       setOpenError('Workspace name is required.')
+      return
+    }
+
+    if (!firstApiName) {
+      setOpenError('First API name is required.')
       return
     }
 
     setLoading(true)
     setOpenError(null)
     try {
-      const result = await window.appBridge.createWorkspace({ name })
+      const result = await window.appBridge.createWorkspace({ name, firstApiName })
       if (result.status === 'cancelled') return
       if (result.status === 'error') {
         setOpenError(result.message)
@@ -155,6 +162,7 @@ export default function App(): React.JSX.Element {
 
       setShowCreateWorkspaceModal(false)
       setNewWorkspaceName('')
+      setNewWorkspaceFirstApiName('')
       await initializeWorkspace(result.snapshot)
       await refreshRecentWorkspaces()
     } finally {
@@ -1018,7 +1026,7 @@ export default function App(): React.JSX.Element {
           <div className="w-full max-w-sm rounded-xl border border-surface-border bg-surface-base p-4 shadow-xl">
             <h3 className="text-sm font-semibold text-slate-100">Create New Workspace</h3>
             <p className="mt-1 text-xs text-slate-400">
-              Enter a workspace name. You will choose its location next.
+              Enter a workspace name and the first API to create. The workspace folder will be the repo root.
             </p>
             <input
               autoFocus
@@ -1035,19 +1043,34 @@ export default function App(): React.JSX.Element {
               placeholder="My API Workspace"
               className="mt-3 w-full rounded-lg border border-surface-border bg-surface-lower px-3 py-2 text-sm text-slate-100 outline-none focus:border-primary/60"
             />
+            <input
+              value={newWorkspaceFirstApiName}
+              onChange={(event) => setNewWorkspaceFirstApiName(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  void onCreateWorkspace()
+                }
+                if (event.key === 'Escape') {
+                  setShowCreateWorkspaceModal(false)
+                }
+              }}
+              placeholder="Payments API"
+              className="mt-3 w-full rounded-lg border border-surface-border bg-surface-lower px-3 py-2 text-sm text-slate-100 outline-none focus:border-primary/60"
+            />
             <div className="mt-3 flex justify-end gap-2">
               <button
                 className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg border border-surface-border text-slate-400 hover:bg-surface-raised hover:text-slate-100 transition-colors"
                 onClick={() => {
                   setShowCreateWorkspaceModal(false)
                   setNewWorkspaceName('')
+                  setNewWorkspaceFirstApiName('')
                 }}
               >
                 Cancel
               </button>
               <button
                 className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg bg-primary text-white hover:bg-primary/80 disabled:opacity-40"
-                disabled={newWorkspaceName.trim().length === 0 || loading}
+                disabled={newWorkspaceName.trim().length === 0 || newWorkspaceFirstApiName.trim().length === 0 || loading}
                 onClick={() => { void onCreateWorkspace() }}
               >
                 {loading ? 'Creating...' : 'Create'}
@@ -1114,7 +1137,7 @@ export default function App(): React.JSX.Element {
           <div className="w-full max-w-sm rounded-xl border border-surface-border bg-surface-base p-4 shadow-xl">
             <h3 className="text-sm font-semibold text-slate-100">Create New API</h3>
             <p className="mt-1 text-xs text-slate-400">
-              Enter an API name. It will be created as a JSON file in your workspace root.
+              Enter an API name. It will be created in its own folder at the workspace root.
             </p>
             <input
               autoFocus
