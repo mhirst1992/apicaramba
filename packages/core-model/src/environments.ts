@@ -1,6 +1,6 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import type { Environment, EnvironmentsConfig } from '@apicaramba/shared-types'
+import type { Environment, EnvironmentsConfig, EnvironmentParameter } from '@apicaramba/shared-types'
 
 const TOOL_DIR = '.api-tool'
 const ENVIRONMENTS_FILE = 'environments.json'
@@ -10,7 +10,8 @@ function defaultEnvironment(): Environment {
     id: 'default',
     name: 'Default',
     baseUrl: '',
-    variables: []
+    variables: [],
+    parameters: []
   }
 }
 
@@ -36,7 +37,8 @@ function normalizeConfig(input: EnvironmentsConfig): EnvironmentsConfig {
     id: first.id || 'default',
     name: first.name || 'Default',
     baseUrl: first.baseUrl || '',
-    variables: first.variables ?? []
+    variables: first.variables ?? [],
+    parameters: normalizeParameters(first.parameters)
   }
 
   return {
@@ -44,6 +46,37 @@ function normalizeConfig(input: EnvironmentsConfig): EnvironmentsConfig {
     activeEnvironmentId: normalizedEnv.id,
     environments: [normalizedEnv]
   }
+}
+
+function normalizeParameters(parameters: Environment['parameters'] | undefined): EnvironmentParameter[] {
+  if (!Array.isArray(parameters)) {
+    return []
+  }
+
+  const normalized: EnvironmentParameter[] = []
+
+  for (const parameter of parameters) {
+    const location = parameter?.in
+    if (location !== 'query' && location !== 'header' && location !== 'path' && location !== 'cookie') {
+      continue
+    }
+
+    const id = typeof parameter.id === 'string' ? parameter.id.trim() : ''
+    const name = typeof parameter.name === 'string' ? parameter.name.trim() : ''
+    if (!id || !name) {
+      continue
+    }
+
+    normalized.push({
+      id,
+      name,
+      in: location,
+      ...(typeof parameter.description === 'string' ? { description: parameter.description } : {}),
+      required: parameter.required === true
+    })
+  }
+
+  return normalized
 }
 
 export async function loadEnvironmentsConfig(

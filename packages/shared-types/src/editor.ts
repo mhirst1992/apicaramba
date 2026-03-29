@@ -16,6 +16,50 @@ export interface OperationDetail {
   summary: string
   description: string
   tags: string[]
+  /** Environment parameter IDs attached to this operation. */
+  parameterIds: string[]
+  /** Media type for request body schema, e.g. application/json. Empty string means no request body schema. */
+  requestBodyMediaType: string
+  /** Selected schema name from components.schemas. Empty means no schema assigned. */
+  requestBodySchemaName: string
+  /** Whether requestBody.required is set in OpenAPI. */
+  requestBodyRequired: boolean
+  /** Response schema assignment by status code, e.g. 200 -> PetResponse, 404 -> ErrorResponse. */
+  responseSchemas: ResponseSchemaAssignment[]
+}
+
+export interface ResponseSchemaAssignment {
+  id: string
+  responseCode: string
+  schemaName: string
+}
+
+export type SchemaPropertyType = 'string' | 'number' | 'integer' | 'boolean' | 'array' | 'object'
+export type SchemaPrimitiveType = 'string' | 'number' | 'integer' | 'boolean'
+
+export type SchemaUsageTag = 'Rqst' | 'Resp' | 'Both'
+
+export interface SchemaPropertyDetail {
+  id: string
+  name: string
+  type: SchemaPropertyType
+  /** For array properties, primitive type of each item when no schema reference is selected. */
+  arrayItemType?: SchemaPrimitiveType
+  /** For array properties, optional referenced schema name for each item. */
+  arrayItemSchemaName?: string
+  /** For object properties, optional referenced schema name. */
+  objectSchemaName?: string
+  required: boolean
+  description: string
+}
+
+export interface SchemaDetail {
+  id: string
+  name: string
+  description: string
+  /** User-assigned usage tag to drive schema pickers in the operation editor. */
+  usageTag?: SchemaUsageTag
+  properties: SchemaPropertyDetail[]
 }
 
 export interface LoadApiEditorRequest {
@@ -25,7 +69,7 @@ export interface LoadApiEditorRequest {
 }
 
 export type LoadApiEditorResult =
-  | { status: 'loaded'; structure: ApiStructure; operations: OperationDetail[] }
+  | { status: 'loaded'; structure: ApiStructure; operations: OperationDetail[]; schemas: SchemaDetail[] }
   | { status: 'error'; message: string }
 
 export interface SaveApiEditorRequest {
@@ -34,6 +78,8 @@ export interface SaveApiEditorRequest {
   openapiRelativePath: string
   /** Full list of operations with their current (possibly edited) field values. */
   operations: OperationDetail[]
+  /** API-level reusable schemas (OpenAPI components.schemas). */
+  schemas: SchemaDetail[]
   /** Current folder structure and ungrouped assignments for this API. */
   structure: ApiStructure
 }

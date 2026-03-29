@@ -115,15 +115,17 @@ function collectOperations(pathsObject: OpenApiDocument['paths']): OperationSumm
 
 		for (const method of OPENAPI_METHODS) {
 			const operation = value[method]
-			if (!operation || typeof operation !== 'object') {
+			if (!operation || typeof operation !== 'object' || Array.isArray(operation)) {
 				continue
 			}
+
+			const operationObj = operation as Record<string, unknown>
 
 			operations.push({
 				method: method.toUpperCase() as HttpMethod,
 				path: pathKey,
-				operationId: typeof operation.operationId === 'string' ? operation.operationId : null,
-				summary: typeof operation.summary === 'string' ? operation.summary : null
+				operationId: typeof operationObj.operationId === 'string' ? operationObj.operationId : null,
+				summary: typeof operationObj.summary === 'string' ? operationObj.summary : null
 			})
 		}
 	}

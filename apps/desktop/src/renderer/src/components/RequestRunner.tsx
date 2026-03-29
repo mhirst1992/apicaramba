@@ -2,6 +2,7 @@ import React from 'react'
 import type {
   OperationDetail,
   Environment,
+  EnvironmentParameter,
   ExecuteRequestRequest,
   ExecuteRequestResult,
   RequestHeader
@@ -29,6 +30,27 @@ function buildUrl(baseUrl: string, path: string, vars: { name: string; value: st
   return base + p
 }
 
+function applyPathParameters(url: string, values: Record<string, string>): string {
+  return url.replace(/\{([^}]+)\}/g, (match, name: string) => {
+    const key = name.trim()
+    const value = values[key]
+    if (!value) return match
+    return encodeURIComponent(value)
+  })
+}
+
+function applyQueryParameters(url: string, values: Record<string, string>): string {
+  const [base, query = ''] = url.split('?')
+  const searchParams = new URLSearchParams(query)
+
+  for (const [key, value] of Object.entries(values)) {
+    searchParams.set(key, value)
+  }
+
+  const nextQuery = searchParams.toString()
+  return nextQuery ? `${base}?${nextQuery}` : base
+}
+
 const STATUS_COLOUR: Record<number, string> = {}
 function statusColour(code: number): string {
   if (STATUS_COLOUR[code]) return STATUS_COLOUR[code]
@@ -49,15 +71,55 @@ function tryPrettyJson(raw: string): string {
 export function RequestRunner({ operation, environment, onExecute }: Props): React.JSX.Element {
   const vars = environment?.variables.filter((v) => !v.isSecret) ?? []
   const baseUrl = environment?.baseUrl ?? ''
-  const resolvedUrl = buildUrl(baseUrl, operation.path, vars)
+  const baseResolvedUrl = buildUrl(baseUrl, operation.path, vars)
+  const availableParameters = environment?.parameters ?? []
+  const operationParameters = React.useMemo(
+    () => operation.parameterIds
+      .map((parameterId) => availableParameters.find((parameter) => parameter.id === parameterId) ?? null)
+      .filter((parameter): parameter is EnvironmentParameter => parameter !== null),
+    [availableParameters, operation.parameterIds]
+  )
 
   const [headers, setHeaders] = React.useState<RequestHeader[]>([{ key: '', value: '' }])
+  const [parameterValues, setParameterValues] = React.useState<Record<string, string>>({})
   const [body, setBody] = React.useState('')
   const [loading, setLoading] = React.useState(false)
   const [response, setResponse] = React.useState<ExecuteRequestResult | null>(null)
   const [showResHeaders, setShowResHeaders] = React.useState(false)
 
   const hasBody = METHODS_WITH_BODY.has(operation.method)
+
+  const categorizedValues = React.useMemo(() => {
+    const pathValues: Record<string, string> = {}
+    const queryValues: Record<string, string> = {}
+    const headerValues: Record<string, string> = {}
+    const cookieValues: Record<string, string> = {}
+    const missingRequired: EnvironmentParameter[] = []
+
+    for (const parameter of operationParameters) {
+      const rawValue = parameterValues[parameter.id] ?? ''
+      const value = substituteVars(rawValue, vars).trim()
+
+      if (!value && parameter.required) {
+        missingRequired.push(parameter)
+        continue
+      }
+
+      if (!value) continue
+
+      if (parameter.in === 'path') pathValues[parameter.name] = value
+      if (parameter.in === 'query') queryValues[parameter.name] = value
+      if (parameter.in === 'header') headerValues[parameter.name] = value
+      if (parameter.in === 'cookie') cookieValues[parameter.name] = value
+    }
+
+    return { pathValues, queryValues, headerValues, cookieValues, missingRequired }
+  }, [operationParameters, parameterValues, vars])
+
+  const resolvedUrl = React.useMemo(() => {
+    const withPath = applyPathParameters(baseResolvedUrl, categorizedValues.pathValues)
+    return applyQueryParameters(withPath, categorizedValues.queryValues)
+  }, [baseResolvedUrl, categorizedValues.pathValues, categorizedValues.queryValues])
 
   function addHeader(): void {
     setHeaders((h) => [...h, { key: '', value: '' }])
@@ -71,13 +133,37 @@ export function RequestRunner({ operation, environment, onExecute }: Props): Rea
     setHeaders((h) => h.map((row, i) => (i === index ? { ...row, [field]: val } : row)))
   }
 
+  function updateParameterValue(parameterId: string, value: string): void {
+    setParameterValues((current) => ({ ...current, [parameterId]: value }))
+  }
+
   async function send(): Promise<void> {
+    if (categorizedValues.missingRequired.length > 0) {
+      return
+    }
+
     setLoading(true)
     setResponse(null)
     const allHeaders = headers.map((h) => ({
       key: substituteVars(h.key, vars),
       value: substituteVars(h.value, vars)
     }))
+
+    for (const [headerName, value] of Object.entries(categorizedValues.headerValues)) {
+      allHeaders.push({ key: headerName, value })
+    }
+
+    const cookieEntries = Object.entries(categorizedValues.cookieValues)
+    if (cookieEntries.length > 0) {
+      const cookieValue = cookieEntries.map(([key, value]) => `${key}=${value}`).join('; ')
+      const existingCookie = allHeaders.find((header) => header.key.toLowerCase() === 'cookie')
+      if (existingCookie) {
+        existingCookie.value = `${existingCookie.value}; ${cookieValue}`
+      } else {
+        allHeaders.push({ key: 'Cookie', value: cookieValue })
+      }
+    }
+
     const result = await onExecute({
       method: operation.method,
       url: resolvedUrl,
@@ -113,7 +199,7 @@ export function RequestRunner({ operation, environment, onExecute }: Props): Rea
         </div>
         <button
           className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-primary text-white hover:bg-primary/80 disabled:opacity-40 transition-colors"
-          disabled={loading || !resolvedUrl}
+          disabled={loading || !resolvedUrl || categorizedValues.missingRequired.length > 0}
           onClick={() => { void send() }}
         >
           {loading ? (
@@ -129,6 +215,34 @@ export function RequestRunner({ operation, environment, onExecute }: Props): Rea
           {loading ? 'Sending…' : 'Send'}
         </button>
       </div>
+
+      {operationParameters.length > 0 ? (
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">Parameters</span>
+            <span className="text-xs text-slate-500">Defined in Environment</span>
+          </div>
+          <div className="rounded-lg border border-surface-border bg-surface-lower p-2.5 flex flex-col gap-1.5">
+            {operationParameters.map((parameter) => (
+              <label key={parameter.id} className="flex items-center gap-2 text-xs">
+                <span className="w-20 shrink-0 text-slate-500 font-mono">{parameter.in}</span>
+                <span className="w-40 shrink-0 text-slate-200 font-mono truncate">{parameter.name}</span>
+                <input
+                  className="flex-1 min-w-0 rounded border border-surface-border bg-surface-base px-2 py-1 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-primary/50"
+                  placeholder={parameter.required ? 'Required' : 'Optional'}
+                  value={parameterValues[parameter.id] ?? ''}
+                  onChange={(event) => updateParameterValue(parameter.id, event.target.value)}
+                />
+              </label>
+            ))}
+          </div>
+          {categorizedValues.missingRequired.length > 0 ? (
+            <p className="mt-2 text-xs text-amber-300">
+              Required parameters missing: {categorizedValues.missingRequired.map((parameter) => `${parameter.in}/${parameter.name}`).join(', ')}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
 
       {/* Headers editor */}
       <div>

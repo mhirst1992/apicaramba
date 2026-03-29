@@ -24,6 +24,8 @@ export type {
 } from './api.js'
 export type { WorkspaceMetadata, StructureConfig } from './metadata.js'
 export type {
+  ParameterLocation,
+  EnvironmentParameter,
   EnvironmentVariable,
   Environment,
   EnvironmentsConfig,
@@ -39,6 +41,12 @@ export type {
 } from './validation.js'
 export type {
   OperationDetail,
+  ResponseSchemaAssignment,
+  SchemaUsageTag,
+  SchemaPropertyType,
+  SchemaPrimitiveType,
+  SchemaPropertyDetail,
+  SchemaDetail,
   LoadApiEditorRequest,
   LoadApiEditorResult,
   SaveApiEditorRequest,

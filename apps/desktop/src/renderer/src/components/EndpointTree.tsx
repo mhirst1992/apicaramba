@@ -7,6 +7,8 @@ interface Props {
   structure: ApiStructure
   selectedFolderId: string | null
   onSelectFolder: (folderId: string | null) => void
+  schemasFolderId: string
+  schemaCount: number
   draggingOperationId: string | null
   onDropOperation: (operationId: string, folderId: string | null) => void
   draggingFolderId: string | null
@@ -183,6 +185,8 @@ export function EndpointTree({
   structure,
   selectedFolderId,
   onSelectFolder,
+  schemasFolderId,
+  schemaCount,
   draggingOperationId,
   onDropOperation,
   draggingFolderId,
@@ -249,6 +253,18 @@ export function EndpointTree({
       >
         <button className="w-full text-left" onClick={() => onSelectFolder(null)}>
           Unsorted <span className="text-slate-500">({structure.ungrouped.length})</span>
+        </button>
+      </div>
+
+      <div
+        className={`rounded px-2 py-1 text-xs border transition-colors ${
+          selectedFolderId === schemasFolderId
+            ? 'bg-primary/15 border-primary/35 text-slate-100'
+            : 'border-transparent text-slate-300 hover:bg-surface-raised'
+        }`}
+      >
+        <button className="w-full text-left" onClick={() => onSelectFolder(schemasFolderId)}>
+          Schemas <span className="text-slate-500">({schemaCount})</span>
         </button>
       </div>
 

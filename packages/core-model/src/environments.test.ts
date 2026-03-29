@@ -14,6 +14,7 @@ describe('environments config', () => {
       expect(config.environments).toHaveLength(1)
       expect(config.activeEnvironmentId).toBe(config.environments[0]?.id)
       expect(config.environments[0]?.name).toBe('Default')
+      expect(config.environments[0]?.parameters).toEqual([])
     } finally {
       await rm(tempRoot, { recursive: true, force: true })
     }
@@ -28,13 +29,20 @@ describe('environments config', () => {
         version: '1.0.0',
         activeEnvironmentId: 'dev',
         environments: [
-          { id: 'dev', name: 'Dev', baseUrl: 'https://api.example.dev', variables: [] },
-          { id: 'ignored', name: 'Ignored', baseUrl: '', variables: [] }
+          {
+            id: 'dev',
+            name: 'Dev',
+            baseUrl: 'https://api.example.dev',
+            variables: [],
+            parameters: [{ id: 'query:limit', name: 'limit', in: 'query', required: false }]
+          },
+          { id: 'ignored', name: 'Ignored', baseUrl: '', variables: [], parameters: [] }
         ]
       })
 
       expect(saved.environments).toHaveLength(1)
       expect(saved.environments[0]?.id).toBe('dev')
+      expect(saved.environments[0]?.parameters).toHaveLength(1)
       expect(saved.activeEnvironmentId).toBe('dev')
 
       const reloaded = await loadEnvironmentsConfig(tempRoot, openapiRelativePath)

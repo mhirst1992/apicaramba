@@ -459,7 +459,8 @@ async function createWorkspaceBootstrapFiles(
         id: 'default',
         name: 'Default',
         baseUrl: '',
-        variables: []
+        variables: [],
+        parameters: []
       }
     ]
   })
@@ -471,11 +472,11 @@ async function validateOpenApi(request: ValidateOpenApiRequest): Promise<Validat
 
 async function handleLoadApiEditor(request: LoadApiEditorRequest): Promise<LoadApiEditorResult> {
   try {
-    const { structure, operations } = await loadApiEditor(
+    const { structure, operations, schemas } = await loadApiEditor(
       request.workspaceRootPath,
       request.openapiRelativePath
     )
-    return { status: 'loaded', structure, operations }
+    return { status: 'loaded', structure, operations, schemas }
   } catch (error) {
     return { status: 'error', message: error instanceof Error ? error.message : 'Failed to load API.' }
   }
@@ -502,7 +503,19 @@ async function handleSaveApiEditor(request: SaveApiEditorRequest): Promise<SaveA
     }
 
     const rawSource = await fs.readFile(sourceAbsPath, 'utf8')
-    const updatedJson = await buildUpdatedDocument(rawSource, request.operations)
+    const environments = await loadEnvironmentsConfig(
+      request.workspaceRootPath,
+      sourceRelativePath
+    )
+    const activeEnvironment = environments.environments.find(
+      (environment) => environment.id === environments.activeEnvironmentId
+    ) ?? environments.environments[0]
+    const updatedJson = await buildUpdatedDocument(
+      rawSource,
+      request.operations,
+      activeEnvironment?.parameters ?? [],
+      request.schemas
+    )
 
     // Write to temp file first so we can validate without touching the real file
     await fs.writeFile(tempPath, updatedJson, 'utf8')

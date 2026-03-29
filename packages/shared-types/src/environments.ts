@@ -16,6 +16,22 @@ export interface EnvironmentVariable {
   description?: string
 }
 
+export type ParameterLocation = 'query' | 'header' | 'path' | 'cookie'
+
+/**
+ * OpenAPI-like reusable parameter definition stored at environment level.
+ */
+export interface EnvironmentParameter {
+  /** Stable key used by operations to reference this parameter. */
+  id: string
+  /** Parameter name as sent over HTTP. */
+  name: string
+  /** Where this parameter is applied. */
+  in: ParameterLocation
+  description?: string
+  required: boolean
+}
+
 /**
  * A named environment profile (e.g. "local", "dev", "staging").
  */
@@ -25,6 +41,8 @@ export interface Environment {
   /** Base URL for all requests in this environment. May contain variable references. */
   baseUrl: string
   variables: EnvironmentVariable[]
+  /** Reusable parameter definitions available to requests in this API. */
+  parameters: EnvironmentParameter[]
 }
 
 /**

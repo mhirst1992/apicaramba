@@ -11,7 +11,15 @@ export interface OpenApiOperation {
   summary?: unknown
   description?: unknown
   tags?: unknown
+  parameters?: unknown
+  requestBody?: unknown
 }
+
+export interface OpenApiComponents {
+  schemas?: unknown
+}
+
+export type OpenApiPathItem = Record<string, OpenApiOperation | unknown>
 
 export interface OpenApiDocument {
   openapi?: unknown
@@ -22,7 +30,8 @@ export interface OpenApiDocument {
   consumes?: unknown
   produces?: unknown
   info?: OpenApiInfo
-  paths?: Record<string, Record<string, OpenApiOperation> | undefined>
+  paths?: Record<string, OpenApiPathItem | undefined>
+  components?: OpenApiComponents
 }
 
 interface SwaggerConversionResult {
