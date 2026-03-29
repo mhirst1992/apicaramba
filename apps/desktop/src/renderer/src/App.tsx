@@ -46,6 +46,7 @@ type SaveStatus =
 export default function App(): React.JSX.Element {
   const [snapshot, setSnapshot] = React.useState<WorkspaceSnapshot | null>(null)
   const [selectedApiId, setSelectedApiId] = React.useState<string | null>(null)
+  const [expandedApiId, setExpandedApiId] = React.useState<string | null>(null)
   const [loading, setLoading] = React.useState(false)
   const [openError, setOpenError] = React.useState<string | null>(null)
 
@@ -140,8 +141,10 @@ export default function App(): React.JSX.Element {
   }
 
   async function initializeWorkspace(snapshotToLoad: WorkspaceSnapshot): Promise<void> {
+    const firstApiId = snapshotToLoad.apis[0]?.id ?? null
     setSnapshot(snapshotToLoad)
-    setSelectedApiId(snapshotToLoad.apis[0]?.id ?? null)
+    setSelectedApiId(firstApiId)
+    setExpandedApiId(firstApiId)
     setEditorState(null)
     setEditedOps({})
     setEditedSchemas({})
@@ -268,6 +271,7 @@ export default function App(): React.JSX.Element {
   function onReturnHome(): void {
     setSnapshot(null)
     setSelectedApiId(null)
+    setExpandedApiId(null)
     setEditorState(null)
     setEditedOps({})
     setEditedSchemas({})
@@ -285,10 +289,28 @@ export default function App(): React.JSX.Element {
   async function onSelectApi(api: ApiSummary): Promise<void> {
     if (!snapshot) return
     setSelectedApiId(api.id)
+    setExpandedApiId(api.id)
     setValidationResult(null)
     setSelectedFolderId(null)
     await loadEnvironmentsForApi(snapshot.workspace.rootPath, api.openapiPath)
     await loadEditorForApi(snapshot.workspace.rootPath, api)
+  }
+
+  function onToggleApiCard(api: ApiSummary): void {
+    if (expandedApiId === api.id) {
+      setExpandedApiId(null)
+      setOpenApiMenuId(null)
+      return
+    }
+
+    if (selectedApiId === api.id) {
+      setExpandedApiId(api.id)
+      setOpenApiMenuId(null)
+      return
+    }
+
+    setOpenApiMenuId(null)
+    void onSelectApi(api)
   }
 
   async function loadEnvironmentsForApi(
@@ -974,7 +996,7 @@ export default function App(): React.JSX.Element {
                   isSelected={selectedApiId === api.id}
                   isMenuOpen={openApiMenuId === api.id}
                   onToggleMenu={() => setOpenApiMenuId((current) => current === api.id ? null : api.id)}
-                  onSelect={() => { void onSelectApi(api) }}
+                  onSelect={() => onToggleApiCard(api)}
                   onEnvironment={() => {
                     const open = async (): Promise<void> => {
                       if (selectedApiId !== api.id) {
@@ -1002,7 +1024,7 @@ export default function App(): React.JSX.Element {
                     }
                   }}
                 />
-                {editorState && selectedApiId === api.id ? (
+                {editorState && selectedApiId === api.id && expandedApiId === api.id ? (
                   <div className="mb-1 rounded-lg border border-surface-border bg-surface-base px-2 py-2">
                     <EndpointTree
                       structure={editorState.structure}
