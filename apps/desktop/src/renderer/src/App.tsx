@@ -1205,6 +1205,7 @@ export default function App(): React.JSX.Element {
                     key={selectedOpKey ?? ''}
                     operation={selectedOperation}
                     environment={activeEnvironment}
+                    schemas={mergedSchemas}
                     onExecute={(req) => window.appBridge.executeRequest(req)}
                   />
                 ) : (
