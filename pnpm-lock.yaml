@@ -38,6 +38,9 @@ importers:
       '@apicaramba/import-export':
         specifier: workspace:*
         version: link:../../packages/import-export
+      '@apicaramba/request-execution':
+        specifier: workspace:*
+        version: link:../../packages/request-execution
       '@apicaramba/shared-types':
         specifier: workspace:*
         version: link:../../packages/shared-types

@@ -11,6 +11,7 @@ import {
 } from '@apicaramba/core-model'
 import { validateOpenApiDocument } from '@apicaramba/validation'
 import { writeJsonFile } from '@apicaramba/import-export'
+import { executeRequest } from '@apicaramba/request-execution'
 import type {
   OpenWorkspaceResult,
   CreateWorkspaceRequest,
@@ -32,7 +33,8 @@ import type {
   LoadEnvironmentsRequest,
   LoadEnvironmentsResult,
   SaveEnvironmentsRequest,
-  SaveEnvironmentsResult
+  SaveEnvironmentsResult,
+  ExecuteRequestRequest
 } from '@apicaramba/shared-types'
 
 const isDev = !app.isPackaged
@@ -510,6 +512,7 @@ app.whenReady().then(() => {
   ipcMain.handle('openapi:save-editor', (_, request: SaveApiEditorRequest) => handleSaveApiEditor(request))
   ipcMain.handle('environments:load', (_, request: LoadEnvironmentsRequest) => loadEnvironments(request))
   ipcMain.handle('environments:save', (_, request: SaveEnvironmentsRequest) => saveEnvironments(request))
+  ipcMain.handle('request:execute', (_, request: ExecuteRequestRequest) => executeRequest(request))
   ipcMain.on('window:minimize', (_e: IpcMainEvent) => mainWindow?.minimize())
   ipcMain.on('window:toggle-maximize', (_e: IpcMainEvent) => {
     if (mainWindow?.isMaximized()) mainWindow.unmaximize()
@@ -545,6 +548,7 @@ app.on('will-quit', () => {
   ipcMain.removeHandler('openapi:save-editor')
   ipcMain.removeHandler('environments:load')
   ipcMain.removeHandler('environments:save')
+  ipcMain.removeHandler('request:execute')
   ipcMain.removeAllListeners('window:minimize')
   ipcMain.removeAllListeners('window:toggle-maximize')
   ipcMain.removeAllListeners('window:close')

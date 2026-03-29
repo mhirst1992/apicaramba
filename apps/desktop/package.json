@@ -1,4 +1,4 @@
-{
+﻿{
   "name": "@apicaramba/desktop",
   "version": "0.0.0",
   "main": "./out/main/index.js",
@@ -13,7 +13,8 @@
     "@apicaramba/core-model": "workspace:*",
     "@apicaramba/import-export": "workspace:*",
     "@apicaramba/shared-types": "workspace:*",
-    "@apicaramba/validation": "workspace:*"
+    "@apicaramba/validation": "workspace:*",
+    "@apicaramba/request-execution": "workspace:*"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.0.0",
