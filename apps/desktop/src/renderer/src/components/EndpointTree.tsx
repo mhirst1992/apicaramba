@@ -157,7 +157,7 @@ function FolderRow({
   onRenameFolder: (folderId: string, currentName: string) => void
   onDeleteFolder: (folderId: string) => void
 }): React.JSX.Element {
-  const [open, setOpen] = React.useState(true)
+  const [open, setOpen] = React.useState(false)
   const indent = depth * 12
   const count = countFolderOperations(folder)
 
@@ -327,7 +327,7 @@ export function EndpointTree({
   onDeleteFolder
 }: Props): React.JSX.Element {
   const [hoveredDropTarget, setHoveredDropTarget] = React.useState<string | null>(null)
-  const [schemasOpen, setSchemasOpen] = React.useState(true)
+  const [schemasOpen, setSchemasOpen] = React.useState(false)
 
   return (
     <div className="flex flex-col gap-1.5">
