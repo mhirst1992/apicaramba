@@ -1,15 +1,19 @@
 import React from 'react'
-import type { ApiStructure, FolderNode } from '@apicaramba/shared-types'
+import type { ApiStructure, FolderNode, OperationRef } from '@apicaramba/shared-types'
 
 const ROOT_DROP_TARGET = '__root__'
 
 interface Props {
   structure: ApiStructure
   selectedFolderId: string | null
+  selectedOperationKey: string | null
   onSelectFolder: (folderId: string | null) => void
+  onSelectOperation: (operationKey: string, folderId: string | null) => void
   schemasFolderId: string
   schemaCount: number
   draggingOperationId: string | null
+  onOperationDragStart: (operationId: string) => void
+  onOperationDragEnd: () => void
   onDropOperation: (operationId: string, folderId: string | null) => void
   draggingFolderId: string | null
   onFolderDragStart: (folderId: string) => void
@@ -28,13 +32,93 @@ function containsFolder(folder: FolderNode, id: string): boolean {
   return folder.children.some((c) => containsFolder(c, id))
 }
 
+function operationKey(op: OperationRef): string {
+  return `${op.method}:${op.path}`
+}
+
+function methodColour(method: string): string {
+  const colours: Record<string, string> = {
+    GET: 'text-[#6C7D47]',
+    POST: 'text-[#FACC15]',
+    PUT: 'text-blue-400',
+    PATCH: 'text-purple-400',
+    DELETE: 'text-[#BC4B51]',
+    HEAD: 'text-slate-400',
+    OPTIONS: 'text-slate-400',
+    TRACE: 'text-slate-400'
+  }
+
+  return colours[method] ?? 'text-slate-400'
+}
+
+function OperationRow({
+  operation,
+  depth,
+  folderId,
+  selectedOperationKey,
+  onSelectOperation,
+  onSelectFolder,
+  onDragStart,
+  onDragEnd
+}: {
+  operation: OperationRef
+  depth: number
+  folderId: string | null
+  selectedOperationKey: string | null
+  onSelectOperation: (operationKey: string, folderId: string | null) => void
+  onSelectFolder: (folderId: string | null) => void
+  onDragStart: (operationId: string) => void
+  onDragEnd: () => void
+}): React.JSX.Element {
+  const key = operationKey(operation)
+  const indent = depth * 14
+
+  return (
+    <div
+      className={`flex items-center gap-2 rounded-md border px-2.5 py-2 text-sm transition-colors ${
+        selectedOperationKey === key
+          ? 'bg-primary/15 border-primary/35 text-slate-100'
+          : 'border-transparent text-slate-300 hover:bg-surface-raised'
+      }`}
+      style={{ marginLeft: `${indent}px` }}
+    >
+      <button
+        className="text-slate-500 hover:text-slate-300 cursor-grab shrink-0"
+        title="Drag to move"
+        draggable
+        onDragStart={() => onDragStart(operation.id)}
+        onDragEnd={onDragEnd}
+      >
+        ⋮⋮
+      </button>
+      <button
+        className="flex-1 text-left min-w-0"
+        title={`${operation.method} ${operation.path}`}
+        onClick={() => {
+          onSelectFolder(folderId)
+          onSelectOperation(key, folderId)
+        }}
+      >
+        <span className={`font-mono text-xs font-semibold mr-2 ${methodColour(operation.method)}`}>
+          {operation.method}
+        </span>
+        <span className="inline-block max-w-full align-middle truncate text-sm text-slate-200">{operation.path}</span>
+      </button>
+    </div>
+  )
+}
+
 function FolderRow({
   folder,
   depth,
   selectedFolderId,
+  selectedOperationKey,
   onSelectFolder,
+  onSelectOperation,
   draggingOperationId,
   onDropOperation,
+  onOperationDragStart,
+  onOperationDragEnd,
   draggingFolderId,
   onFolderDragStart,
   onFolderDragEnd,
@@ -47,9 +131,13 @@ function FolderRow({
   folder: FolderNode
   depth: number
   selectedFolderId: string | null
+  selectedOperationKey: string | null
   onSelectFolder: (folderId: string | null) => void
+  onSelectOperation: (operationKey: string, folderId: string | null) => void
   draggingOperationId: string | null
   onDropOperation: (operationId: string, folderId: string | null) => void
+  onOperationDragStart: (operationId: string) => void
+  onOperationDragEnd: () => void
   draggingFolderId: string | null
   onFolderDragStart: (folderId: string) => void
   onFolderDragEnd: () => void
@@ -99,7 +187,7 @@ function FolderRow({
   return (
     <div>
       <div
-        className={`flex items-center gap-1 rounded px-2 py-1 text-xs border transition-colors ${
+        className={`flex items-center gap-1 rounded-md px-2.5 py-2 text-sm border transition-colors ${
           acceptingDrop
             ? 'border-accent bg-accent/10 text-slate-100'
             : selectedFolderId === folder.id
@@ -128,8 +216,13 @@ function FolderRow({
         >
           {open ? '▾' : '▸'}
         </button>
-        <button className="flex-1 text-left truncate" onClick={() => onSelectFolder(folder.id)}>
-          {folder.name} <span className="text-slate-500">({count})</span>
+        <button
+          className="flex-1 text-left min-w-0"
+          title={folder.name}
+          onClick={() => onSelectFolder(folder.id)}
+        >
+          <span className="inline-block max-w-[78%] truncate align-middle">{folder.name}</span>
+          <span className="ml-1 text-slate-500">({count})</span>
         </button>
         <button
           className="hidden group-hover:flex items-center text-slate-500 hover:text-slate-200 shrink-0 px-0.5"
@@ -156,16 +249,34 @@ function FolderRow({
         </button>
       </div>
 
-      {open
-        ? folder.children.map((child) => (
+      {open ? (
+        <div className="mt-1.5 flex flex-col gap-1">
+          {folder.operations.map((operation) => (
+            <OperationRow
+              key={operation.id}
+              operation={operation}
+              depth={depth + 1}
+              folderId={folder.id}
+              selectedOperationKey={selectedOperationKey}
+              onSelectOperation={onSelectOperation}
+              onSelectFolder={onSelectFolder}
+              onDragStart={onOperationDragStart}
+              onDragEnd={onOperationDragEnd}
+            />
+          ))}
+          {folder.children.map((child) => (
             <FolderRow
               key={child.id}
               folder={child}
               depth={depth + 1}
               selectedFolderId={selectedFolderId}
+              selectedOperationKey={selectedOperationKey}
               onSelectFolder={onSelectFolder}
+              onSelectOperation={onSelectOperation}
               draggingOperationId={draggingOperationId}
               onDropOperation={onDropOperation}
+              onOperationDragStart={onOperationDragStart}
+              onOperationDragEnd={onOperationDragEnd}
               draggingFolderId={draggingFolderId}
               onFolderDragStart={onFolderDragStart}
               onFolderDragEnd={onFolderDragEnd}
@@ -175,8 +286,9 @@ function FolderRow({
               onRenameFolder={onRenameFolder}
               onDeleteFolder={onDeleteFolder}
             />
-          ))
-        : null}
+          ))}
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -184,11 +296,15 @@ function FolderRow({
 export function EndpointTree({
   structure,
   selectedFolderId,
+  selectedOperationKey,
   onSelectFolder,
+  onSelectOperation,
   schemasFolderId,
   schemaCount,
   draggingOperationId,
   onDropOperation,
+  onOperationDragStart,
+  onOperationDragEnd,
   draggingFolderId,
   onFolderDragStart,
   onFolderDragEnd,
@@ -199,16 +315,20 @@ export function EndpointTree({
   const [hoveredDropTarget, setHoveredDropTarget] = React.useState<string | null>(null)
 
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col gap-1.5">
       {structure.rootFolder.children.map((child) => (
         <FolderRow
           key={child.id}
           folder={child}
           depth={0}
           selectedFolderId={selectedFolderId}
+          selectedOperationKey={selectedOperationKey}
           onSelectFolder={onSelectFolder}
+          onSelectOperation={onSelectOperation}
           draggingOperationId={draggingOperationId}
           onDropOperation={onDropOperation}
+          onOperationDragStart={onOperationDragStart}
+          onOperationDragEnd={onOperationDragEnd}
           draggingFolderId={draggingFolderId}
           onFolderDragStart={onFolderDragStart}
           onFolderDragEnd={onFolderDragEnd}
@@ -221,7 +341,7 @@ export function EndpointTree({
       ))}
 
       <div
-        className={`mt-1 rounded px-2 py-1 text-xs border transition-colors ${
+        className={`mt-1 rounded-md px-2.5 py-2 text-sm border transition-colors ${
           draggingOperationId && hoveredDropTarget === 'unsorted'
             ? 'border-accent bg-accent/10 text-slate-100'
             : selectedFolderId === null
@@ -251,26 +371,44 @@ export function EndpointTree({
           onDropOperation(draggingOperationId, null)
         }}
       >
-        <button className="w-full text-left" onClick={() => onSelectFolder(null)}>
+        <button className="w-full text-left truncate" title="Unsorted" onClick={() => onSelectFolder(null)}>
           Unsorted <span className="text-slate-500">({structure.ungrouped.length})</span>
         </button>
       </div>
 
+      {selectedFolderId === null ? (
+        <div className="flex flex-col gap-1">
+          {structure.ungrouped.map((operation) => (
+            <OperationRow
+              key={operation.id}
+              operation={operation}
+              depth={1}
+              folderId={null}
+              selectedOperationKey={selectedOperationKey}
+              onSelectOperation={onSelectOperation}
+              onSelectFolder={onSelectFolder}
+              onDragStart={onOperationDragStart}
+              onDragEnd={onOperationDragEnd}
+            />
+          ))}
+        </div>
+      ) : null}
+
       <div
-        className={`rounded px-2 py-1 text-xs border transition-colors ${
+        className={`rounded-md px-2.5 py-2 text-sm border transition-colors ${
           selectedFolderId === schemasFolderId
             ? 'bg-primary/15 border-primary/35 text-slate-100'
             : 'border-transparent text-slate-300 hover:bg-surface-raised'
         }`}
       >
-        <button className="w-full text-left" onClick={() => onSelectFolder(schemasFolderId)}>
+        <button className="w-full text-left truncate" title="Schemas" onClick={() => onSelectFolder(schemasFolderId)}>
           Schemas <span className="text-slate-500">({schemaCount})</span>
         </button>
       </div>
 
       {draggingFolderId ? (
         <div
-          className={`rounded px-2 py-1 text-xs border transition-colors ${
+          className={`rounded-md px-2.5 py-2 text-sm border transition-colors ${
             hoveredDropTarget === ROOT_DROP_TARGET
               ? 'border-accent bg-accent/10 text-slate-100'
               : 'border-dashed border-surface-border text-slate-500'
@@ -299,7 +437,7 @@ export function EndpointTree({
       ) : null}
 
       {structure.rootFolder.children.length === 0 && structure.ungrouped.length === 0 ? (
-        <p className="px-2 text-xs text-slate-500">No operations found.</p>
+        <p className="px-2 text-sm text-slate-500">No operations found.</p>
       ) : null}
     </div>
   )
