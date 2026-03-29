@@ -2,6 +2,7 @@ import React from 'react'
 import type {
   WorkspaceSnapshot,
   ApiSummary,
+  RecentWorkspace,
   ValidateOpenApiResult,
   ApiStructure,
   FolderNode,
@@ -62,6 +63,7 @@ export default function App(): React.JSX.Element {
   const [newFolderName, setNewFolderName] = React.useState('')
   const [showCreateWorkspaceModal, setShowCreateWorkspaceModal] = React.useState(false)
   const [newWorkspaceName, setNewWorkspaceName] = React.useState('')
+  const [recentWorkspaces, setRecentWorkspaces] = React.useState<RecentWorkspace[]>([])
 
   const selectedApi = React.useMemo(
     () => snapshot?.apis.find((a) => a.id === selectedApiId) ?? null,
@@ -79,6 +81,18 @@ export default function App(): React.JSX.Element {
     () => mergedOperations.find((op) => op.key === selectedOpKey) ?? null,
     [mergedOperations, selectedOpKey]
   )
+
+  React.useEffect(() => {
+    void refreshRecentWorkspaces()
+  }, [])
+
+  async function refreshRecentWorkspaces(): Promise<void> {
+    const result = await window.appBridge.loadRecentWorkspaces()
+    if (result.status === 'error') {
+      return
+    }
+    setRecentWorkspaces(result.workspaces)
+  }
 
   async function initializeWorkspace(snapshotToLoad: WorkspaceSnapshot): Promise<void> {
     setSnapshot(snapshotToLoad)
@@ -103,6 +117,7 @@ export default function App(): React.JSX.Element {
       if (result.status === 'cancelled') return
       if (result.status === 'error') { setOpenError(result.message); return }
       await initializeWorkspace(result.snapshot)
+      await refreshRecentWorkspaces()
     } finally {
       setLoading(false)
     }
@@ -128,9 +143,43 @@ export default function App(): React.JSX.Element {
       setShowCreateWorkspaceModal(false)
       setNewWorkspaceName('')
       await initializeWorkspace(result.snapshot)
+      await refreshRecentWorkspaces()
     } finally {
       setLoading(false)
     }
+  }
+
+  async function onOpenRecentWorkspace(rootPath: string): Promise<void> {
+    setLoading(true)
+    setOpenError(null)
+    try {
+      const result = await window.appBridge.openRecentWorkspace({ rootPath })
+      if (result.status === 'error') {
+        setOpenError(result.message)
+        await refreshRecentWorkspaces()
+        return
+      }
+
+      await initializeWorkspace(result.snapshot)
+      await refreshRecentWorkspaces()
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  function onReturnHome(): void {
+    setSnapshot(null)
+    setSelectedApiId(null)
+    setEditorState(null)
+    setEditedOps({})
+    setSelectedOpKey(null)
+    setSelectedFolderId(null)
+    setValidationResult(null)
+    setSaveStatus('idle')
+    setOpenApiMenuId(null)
+    setShowEnvironmentPanel(false)
+    setOpenError(null)
+    void refreshRecentWorkspaces()
   }
 
   async function onSelectApi(api: ApiSummary): Promise<void> {
@@ -449,10 +498,10 @@ export default function App(): React.JSX.Element {
           <div className="px-3 pb-3 shrink-0">
             <button
               className="w-full text-xs px-3 py-2 rounded-lg border border-surface-border text-slate-400 hover:bg-surface-raised hover:text-slate-200 transition-colors"
-              onClick={() => { void onOpenWorkspace() }}
+              onClick={onReturnHome}
               disabled={loading}
             >
-              {loading ? 'Opening...' : 'Switch Workspace'}
+              Switch Workspace
             </button>
           </div>
         ) : null}
@@ -494,6 +543,29 @@ export default function App(): React.JSX.Element {
                 {openError}
               </div>
             ) : null}
+
+            {recentWorkspaces.length > 0 ? (
+              <section className="mt-6 rounded-xl border border-surface-border bg-surface-lower/70 px-4 py-4">
+                <div className="flex items-center justify-between gap-2">
+                  <h2 className="text-sm font-semibold text-slate-200">Recent Workspaces</h2>
+                  <span className="text-xs text-slate-500">Jump back in quickly</span>
+                </div>
+                <div className="mt-3 flex flex-col gap-2">
+                  {recentWorkspaces.map((workspace) => (
+                    <button
+                      key={workspace.rootPath}
+                      className="w-full text-left rounded-lg border border-surface-border bg-surface-base px-3 py-2 hover:border-primary/40 hover:bg-surface-raised transition-colors disabled:opacity-40"
+                      onClick={() => { void onOpenRecentWorkspace(workspace.rootPath) }}
+                      disabled={loading}
+                    >
+                      <div className="text-sm text-slate-100 truncate">{workspace.name}</div>
+                      <div className="text-xs text-slate-500 truncate mt-0.5">{workspace.rootPath}</div>
+                    </button>
+                  ))}
+                </div>
+              </section>
+            ) : null}
+
             <EmptyState />
           </div>
         </main>

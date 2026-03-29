@@ -3,6 +3,9 @@ import type {
   OpenWorkspaceResult,
   CreateWorkspaceRequest,
   CreateWorkspaceResult,
+  LoadRecentWorkspacesResult,
+  OpenRecentWorkspaceRequest,
+  OpenRecentWorkspaceResult,
   ValidateOpenApiRequest,
   ValidateOpenApiResult,
   LoadApiEditorRequest,
@@ -29,6 +32,8 @@ export interface AppBridge {
   platform: NodeJS.Platform
   openWorkspace: () => Promise<OpenWorkspaceResult>
   createWorkspace: (request: CreateWorkspaceRequest) => Promise<CreateWorkspaceResult>
+  loadRecentWorkspaces: () => Promise<LoadRecentWorkspacesResult>
+  openRecentWorkspace: (request: OpenRecentWorkspaceRequest) => Promise<OpenRecentWorkspaceResult>
   validateOpenApi: (request: ValidateOpenApiRequest) => Promise<ValidateOpenApiResult>
   loadApiEditor: (request: LoadApiEditorRequest) => Promise<LoadApiEditorResult>
   saveApiEditor: (request: SaveApiEditorRequest) => Promise<SaveApiEditorResult>
@@ -53,6 +58,10 @@ const bridge: AppBridge = {
   openWorkspace: () => ipcRenderer.invoke('workspace:open') as Promise<OpenWorkspaceResult>,
   createWorkspace: (request: CreateWorkspaceRequest) =>
     ipcRenderer.invoke('workspace:create', request) as Promise<CreateWorkspaceResult>,
+  loadRecentWorkspaces: () =>
+    ipcRenderer.invoke('workspace:list-recent') as Promise<LoadRecentWorkspacesResult>,
+  openRecentWorkspace: (request: OpenRecentWorkspaceRequest) =>
+    ipcRenderer.invoke('workspace:open-recent', request) as Promise<OpenRecentWorkspaceResult>,
   validateOpenApi: (request: ValidateOpenApiRequest) =>
     ipcRenderer.invoke('openapi:validate', request) as Promise<ValidateOpenApiResult>,
   loadApiEditor: (request: LoadApiEditorRequest) =>

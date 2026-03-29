@@ -15,6 +15,10 @@ import type {
   OpenWorkspaceResult,
   CreateWorkspaceRequest,
   CreateWorkspaceResult,
+  RecentWorkspace,
+  OpenRecentWorkspaceRequest,
+  LoadRecentWorkspacesResult,
+  OpenRecentWorkspaceResult,
   ValidateOpenApiRequest,
   ValidateOpenApiResult,
   LoadApiEditorRequest,
@@ -29,6 +33,8 @@ import type {
 
 const isDev = !app.isPackaged
 const appIconPath = resolve(__dirname, '../../resources/icon.ico')
+const RECENT_WORKSPACES_FILE = 'recent-workspaces.json'
+const RECENT_WORKSPACES_MAX = 8
 
 let mainWindow: BrowserWindow | null = null
 
@@ -39,6 +45,11 @@ interface BootstrapOpenApiDocument {
     version: string
   }
   paths: Record<string, never>
+}
+
+interface RecentWorkspacesConfig {
+  version: string
+  workspaces: RecentWorkspace[]
 }
 
 function createWindow(): void {
@@ -85,6 +96,7 @@ async function openWorkspaceDialog(): Promise<OpenWorkspaceResult> {
 
   try {
     const snapshot = await loadWorkspaceSnapshot(selectedPath)
+    await addRecentWorkspace(snapshot.workspace)
     return { status: 'selected', snapshot }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to open workspace.'
@@ -146,11 +158,96 @@ async function createWorkspaceDialog(
 
   try {
     const snapshot = await loadWorkspaceSnapshot(workspacePath)
+    await addRecentWorkspace(snapshot.workspace)
     return { status: 'selected', snapshot }
   } catch (error) {
     return {
       status: 'error',
       message: error instanceof Error ? error.message : 'Workspace created but failed to open.'
+    }
+  }
+}
+
+function recentWorkspacesConfigPath(): string {
+  return join(app.getPath('userData'), RECENT_WORKSPACES_FILE)
+}
+
+async function loadRecentWorkspaceEntries(): Promise<RecentWorkspace[]> {
+  try {
+    const raw = await fs.readFile(recentWorkspacesConfigPath(), 'utf8')
+    const parsed = JSON.parse(raw) as RecentWorkspacesConfig
+
+    if (!Array.isArray(parsed.workspaces)) {
+      return []
+    }
+
+    return parsed.workspaces.filter((entry) =>
+      typeof entry.name === 'string' &&
+      typeof entry.rootPath === 'string' &&
+      typeof entry.lastOpenedAt === 'string'
+    )
+  } catch {
+    return []
+  }
+}
+
+async function saveRecentWorkspaceEntries(entries: RecentWorkspace[]): Promise<void> {
+  const config: RecentWorkspacesConfig = {
+    version: '1.0.0',
+    workspaces: entries.slice(0, RECENT_WORKSPACES_MAX)
+  }
+  await writeJsonFile(recentWorkspacesConfigPath(), config)
+}
+
+function compareWorkspacePath(a: string, b: string): boolean {
+  return process.platform === 'win32'
+    ? a.toLowerCase() === b.toLowerCase()
+    : a === b
+}
+
+async function addRecentWorkspace(workspace: { name: string; rootPath: string }): Promise<void> {
+  const existing = await loadRecentWorkspaceEntries()
+  const deduped = existing.filter((entry) => !compareWorkspacePath(entry.rootPath, workspace.rootPath))
+  const next: RecentWorkspace[] = [
+    {
+      name: workspace.name,
+      rootPath: workspace.rootPath,
+      lastOpenedAt: new Date().toISOString()
+    },
+    ...deduped
+  ]
+
+  await saveRecentWorkspaceEntries(next)
+}
+
+async function handleLoadRecentWorkspaces(): Promise<LoadRecentWorkspacesResult> {
+  try {
+    const entries = await loadRecentWorkspaceEntries()
+    return { status: 'loaded', workspaces: entries }
+  } catch (error) {
+    return {
+      status: 'error',
+      message: error instanceof Error ? error.message : 'Failed to load recent workspaces.'
+    }
+  }
+}
+
+async function handleOpenRecentWorkspace(
+  request: OpenRecentWorkspaceRequest
+): Promise<OpenRecentWorkspaceResult> {
+  const rootPath = request.rootPath?.trim()
+  if (!rootPath) {
+    return { status: 'error', message: 'Workspace path is required.' }
+  }
+
+  try {
+    const snapshot = await loadWorkspaceSnapshot(rootPath)
+    await addRecentWorkspace(snapshot.workspace)
+    return { status: 'selected', snapshot }
+  } catch (error) {
+    return {
+      status: 'error',
+      message: error instanceof Error ? error.message : 'Failed to open workspace.'
     }
   }
 }
@@ -299,6 +396,10 @@ app.whenReady().then(() => {
   ipcMain.handle('workspace:create', (_, request: CreateWorkspaceRequest) =>
     createWorkspaceDialog(request)
   )
+  ipcMain.handle('workspace:list-recent', handleLoadRecentWorkspaces)
+  ipcMain.handle('workspace:open-recent', (_, request: OpenRecentWorkspaceRequest) =>
+    handleOpenRecentWorkspace(request)
+  )
   ipcMain.handle('openapi:validate', (_, request: ValidateOpenApiRequest) => validateOpenApi(request))
   ipcMain.handle('openapi:load-editor', (_, request: LoadApiEditorRequest) => handleLoadApiEditor(request))
   ipcMain.handle('openapi:save-editor', (_, request: SaveApiEditorRequest) => handleSaveApiEditor(request))
@@ -330,6 +431,8 @@ app.on('window-all-closed', () => {
 app.on('will-quit', () => {
   ipcMain.removeHandler('workspace:open')
   ipcMain.removeHandler('workspace:create')
+  ipcMain.removeHandler('workspace:list-recent')
+  ipcMain.removeHandler('workspace:open-recent')
   ipcMain.removeHandler('openapi:validate')
   ipcMain.removeHandler('openapi:load-editor')
   ipcMain.removeHandler('openapi:save-editor')
