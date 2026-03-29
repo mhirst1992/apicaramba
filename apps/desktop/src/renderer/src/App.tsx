@@ -67,6 +67,9 @@ export default function App(): React.JSX.Element {
   const [recentWorkspaces, setRecentWorkspaces] = React.useState<RecentWorkspace[]>([])
   const [showCreateApiModal, setShowCreateApiModal] = React.useState(false)
   const [newApiName, setNewApiName] = React.useState('')
+  const [showRenameFolderModal, setShowRenameFolderModal] = React.useState(false)
+  const [renameFolderTargetId, setRenameFolderTargetId] = React.useState<string | null>(null)
+  const [renameFolderValue, setRenameFolderValue] = React.useState('')
 
   const selectedApi = React.useMemo(
     () => snapshot?.apis.find((a) => a.id === selectedApiId) ?? null,
@@ -380,6 +383,44 @@ export default function App(): React.JSX.Element {
     setNewFolderName('')
   }
 
+  function onRenameFolder(folderId: string, currentName: string): void {
+    setRenameFolderTargetId(folderId)
+    setRenameFolderValue(currentName)
+    setShowRenameFolderModal(true)
+  }
+
+  function onConfirmRenameFolder(): void {
+    const name = renameFolderValue.trim()
+    if (!name || !renameFolderTargetId) return
+
+    updateStructure((draft) => {
+      const folder = findFolderById(draft.rootFolder, renameFolderTargetId)
+      if (folder) folder.name = name
+    })
+
+    setShowRenameFolderModal(false)
+    setRenameFolderTargetId(null)
+    setRenameFolderValue('')
+  }
+
+  function collectAllFolderOps(folder: FolderNode): OperationRef[] {
+    return [...folder.operations, ...folder.children.flatMap(collectAllFolderOps)]
+  }
+
+  function onDeleteFolder(folderId: string): void {
+    if (!editorState) return
+
+    updateStructure((draft) => {
+      const folder = findFolderById(draft.rootFolder, folderId)
+      if (!folder) return
+      const orphaned = collectAllFolderOps(folder)
+      collectAndRemoveFolder(draft.rootFolder, folderId)
+      draft.ungrouped.push(...orphaned)
+    })
+
+    if (selectedFolderId === folderId) setSelectedFolderId(null)
+  }
+
   function collectAndRemoveFolder(parent: FolderNode, folderId: string): FolderNode | null {
     const idx = parent.children.findIndex((c) => c.id === folderId)
     if (idx >= 0) {
@@ -591,6 +632,8 @@ export default function App(): React.JSX.Element {
                       onFolderDragStart={setDraggingFolderId}
                       onFolderDragEnd={() => setDraggingFolderId(null)}
                       onDropFolder={onDropFolder}
+                      onRenameFolder={onRenameFolder}
+                      onDeleteFolder={onDeleteFolder}
                     />
                   </div>
                 ) : null}
@@ -818,6 +861,44 @@ export default function App(): React.JSX.Element {
                 onClick={onConfirmCreateFolder}
               >
                 Create
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {showRenameFolderModal ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-sm rounded-xl border border-surface-border bg-surface-base p-4 shadow-xl">
+            <h3 className="text-sm font-semibold text-slate-100">Rename Folder</h3>
+            <p className="mt-1 text-xs text-slate-400">Enter a new name for this folder.</p>
+            <input
+              autoFocus
+              value={renameFolderValue}
+              onChange={(event) => setRenameFolderValue(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') onConfirmRenameFolder()
+                if (event.key === 'Escape') {
+                  setShowRenameFolderModal(false)
+                  setRenameFolderTargetId(null)
+                }
+              }}
+              placeholder="Folder name"
+              className="mt-3 w-full rounded-lg border border-surface-border bg-surface-lower px-3 py-2 text-sm text-slate-100 outline-none focus:border-primary/60"
+            />
+            <div className="mt-3 flex justify-end gap-2">
+              <button
+                className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg border border-surface-border text-slate-400 hover:bg-surface-raised hover:text-slate-100 transition-colors"
+                onClick={() => { setShowRenameFolderModal(false); setRenameFolderTargetId(null) }}
+              >
+                Cancel
+              </button>
+              <button
+                className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg bg-primary text-white hover:bg-primary/80 disabled:opacity-40"
+                disabled={renameFolderValue.trim().length === 0}
+                onClick={onConfirmRenameFolder}
+              >
+                Rename
               </button>
             </div>
           </div>
@@ -1311,4 +1392,3 @@ function SidebarPlaceholder(): React.JSX.Element {
     </div>
   )
 }
-
