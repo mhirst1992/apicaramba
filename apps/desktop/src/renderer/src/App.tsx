@@ -1298,8 +1298,8 @@ export default function App(): React.JSX.Element {
                 onChange={(event) => setNewSchemaUsageTag(event.target.value as SchemaUsageTag)}
                 className="w-full rounded-lg border border-surface-border bg-surface-lower px-3 py-2 text-sm text-slate-100 outline-none focus:border-primary/60"
               >
-                <option value="Rqst">Rqst</option>
-                <option value="Resp">Resp</option>
+                <option value="Rqst">Request</option>
+                <option value="Resp">Response</option>
                 <option value="Both">Both</option>
               </select>
             </label>
@@ -1989,8 +1989,8 @@ function SchemaEditor({
             value={schema.usageTag ?? 'Both'}
             onChange={(event) => onChange({ ...schema, usageTag: event.target.value as SchemaUsageTag })}
           >
-            <option value="Rqst">Rqst</option>
-            <option value="Resp">Resp</option>
+            <option value="Rqst">Request</option>
+            <option value="Resp">Response</option>
             <option value="Both">Both</option>
           </select>
         </label>

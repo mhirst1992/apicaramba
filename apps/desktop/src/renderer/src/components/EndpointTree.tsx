@@ -3,6 +3,12 @@ import type { ApiStructure, FolderNode, OperationRef, SchemaDetail } from '@apic
 
 const ROOT_DROP_TARGET = '__root__'
 
+function usageTagLabel(value: SchemaDetail['usageTag']): string {
+  if (value === 'Rqst') return 'Request'
+  if (value === 'Resp') return 'Response'
+  return 'Both'
+}
+
 interface Props {
   structure: ApiStructure
   selectedFolderId: string | null
@@ -450,7 +456,7 @@ export function EndpointTree({
             >
               <span className="inline-block max-w-[80%] truncate font-mono align-middle">{schema.name}</span>
               <span className="ml-2 rounded border border-surface-border bg-surface-lower px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-slate-300">
-                {schema.usageTag ?? 'Both'}
+                {usageTagLabel(schema.usageTag)}
               </span>
             </button>
           ))}
