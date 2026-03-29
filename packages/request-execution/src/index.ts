@@ -1,4 +1,4 @@
-﻿import type { ExecuteRequestRequest, ExecuteRequestResult, RequestHeader } from '@apicaramba/shared-types'
+import type { ExecuteRequestRequest, ExecuteRequestResult, RequestHeader } from '@apicaramba/shared-types'
 
 /**
  * Execute an HTTP request and return a structured result.

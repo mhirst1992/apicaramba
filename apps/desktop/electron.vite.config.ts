@@ -12,7 +12,7 @@ export default defineConfig({
     },
     plugins: [
       externalizeDepsPlugin({
-        exclude: ['@apicaramba/core-model', '@apicaramba/import-export', '@apicaramba/shared-types', '@apicaramba/validation']
+        exclude: ['@apicaramba/core-model', '@apicaramba/import-export', '@apicaramba/shared-types', '@apicaramba/validation', '@apicaramba/request-execution']
       })
     ]
   },
