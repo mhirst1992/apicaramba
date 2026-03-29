@@ -6,9 +6,9 @@ import type {
   RequestCustomParameter,
   ExecuteRequestRequest,
   ExecuteRequestResult,
-  SchemaDetail,
-  SchemaPropertyDetail
+  SchemaDetail
 } from '@apicaramba/shared-types'
+import { buildExampleFromSchemaName } from '../utils/schemaExampleUtils.js'
 
 interface Props {
   operation: OperationDetail
@@ -254,61 +254,6 @@ function JsonCodePanel({
       </div>
     </div>
   )
-}
-
-function defaultValueForPrimitive(type: SchemaPropertyDetail['type'] | SchemaPropertyDetail['arrayItemType']): unknown {
-  if (type === 'number' || type === 'integer') return 0
-  if (type === 'boolean') return false
-  return ''
-}
-
-function buildExampleFromSchemaName(
-  schemaName: string,
-  schemasByName: Map<string, SchemaDetail>,
-  visiting: Set<string>
-): unknown {
-  const schema = schemasByName.get(schemaName)
-  if (!schema) {
-    return {}
-  }
-
-  if (visiting.has(schemaName)) {
-    return {}
-  }
-
-  visiting.add(schemaName)
-
-  const result: Record<string, unknown> = {}
-  for (const property of schema.properties) {
-    result[property.name] = buildExampleForProperty(property, schemasByName, visiting)
-  }
-
-  visiting.delete(schemaName)
-  return result
-}
-
-function buildExampleForProperty(
-  property: SchemaPropertyDetail,
-  schemasByName: Map<string, SchemaDetail>,
-  visiting: Set<string>
-): unknown {
-  if (property.type === 'array') {
-    if (property.arrayItemSchemaName) {
-      return [buildExampleFromSchemaName(property.arrayItemSchemaName, schemasByName, visiting)]
-    }
-
-    return [defaultValueForPrimitive(property.arrayItemType ?? 'string')]
-  }
-
-  if (property.type === 'object') {
-    if (property.objectSchemaName) {
-      return buildExampleFromSchemaName(property.objectSchemaName, schemasByName, visiting)
-    }
-
-    return {}
-  }
-
-  return defaultValueForPrimitive(property.type)
 }
 
 function buildInitialBody(operation: OperationDetail, schemas: SchemaDetail[]): string {

@@ -13,6 +13,7 @@ import type {
   SchemaPropertyDetail,
   SchemaPropertyType,
   SchemaPrimitiveType,
+  SchemaCompositionType,
   SchemaUsageTag,
   EnvironmentParameter,
   ParameterLocation
@@ -396,9 +397,10 @@ function extractSchemaDetails(document: OpenApiDocument): SchemaDetail[] {
       ? Object.entries(propertiesObj).map(([propName, propValue], index) => {
           const propObj = asObject(propValue)
           const refName = extractSchemaRefNameFromObject(propObj)
+          const composedObject = extractComposedObjectFromSchema(propObj)
           const type = typeof propObj?.type === 'string' && isSchemaType(propObj.type)
             ? propObj.type
-            : refName
+            : (composedObject.schemaNames.length > 0 || refName)
               ? 'object'
               : 'string'
 
@@ -422,6 +424,14 @@ function extractSchemaDetails(document: OpenApiDocument): SchemaDetail[] {
             objectSchemaName = refName
           }
 
+          const objectCompositionType = composedObject.schemaNames.length > 0
+            ? composedObject.compositionType
+            : undefined
+          const objectSchemaNames = composedObject.schemaNames.length > 0
+            ? composedObject.schemaNames
+            : undefined
+          const objectDiscriminatorPropertyName = composedObject.discriminatorPropertyName
+
           return {
             id: `${name}__prop__${index}`,
             name: propName,
@@ -429,11 +439,52 @@ function extractSchemaDetails(document: OpenApiDocument): SchemaDetail[] {
             ...(arrayItemType ? { arrayItemType } : {}),
             ...(arrayItemSchemaName ? { arrayItemSchemaName } : {}),
             ...(objectSchemaName ? { objectSchemaName } : {}),
+            ...(objectCompositionType ? { objectCompositionType } : {}),
+            ...(objectSchemaNames ? { objectSchemaNames } : {}),
+            ...(objectDiscriminatorPropertyName ? { objectDiscriminatorPropertyName } : {}),
             required: requiredNames.has(propName),
             description: typeof propObj?.description === 'string' ? propObj.description : ''
           }
         })
       : []
+
+    // Detect schema-level composition (allOf/anyOf/oneOf on the schema itself) → unnamed object property
+    const schemaLevelComposed = extractComposedObjectFromSchema(schemaObj)
+    if (schemaLevelComposed.schemaNames.length > 0) {
+      properties.push({
+        id: `${name}__inline__composition`,
+        name: '',
+        type: 'object',
+        objectCompositionType: schemaLevelComposed.compositionType,
+        objectSchemaNames: schemaLevelComposed.schemaNames,
+        ...(schemaLevelComposed.discriminatorPropertyName
+          ? { objectDiscriminatorPropertyName: schemaLevelComposed.discriminatorPropertyName }
+          : {}),
+        required: false,
+        description: ''
+      })
+    }
+
+    // Detect schema-level array type → unnamed array property
+    if (schemaObj['type'] === 'array') {
+      const itemsObj = asObject(schemaObj['items'])
+      const itemRefName = extractSchemaRefNameFromObject(itemsObj)
+      properties.push({
+        id: `${name}__inline__array`,
+        name: '',
+        type: 'array',
+        ...(itemRefName
+          ? { arrayItemSchemaName: itemRefName }
+          : {
+              arrayItemType:
+                typeof itemsObj?.type === 'string' && isSchemaPrimitiveType(itemsObj.type)
+                  ? itemsObj.type
+                  : 'string'
+            }),
+        required: false,
+        description: ''
+      })
+    }
 
     schemas.push({
       id: `schema:${name}`,
@@ -446,6 +497,47 @@ function extractSchemaDetails(document: OpenApiDocument): SchemaDetail[] {
 
   schemas.sort((a, b) => a.name.localeCompare(b.name))
   return schemas
+}
+
+function isSchemaCompositionType(value: string): value is SchemaCompositionType {
+  return value === 'allOf' || value === 'anyOf' || value === 'oneOf'
+}
+
+function extractComposedObjectFromSchema(schemaObj: Record<string, unknown> | null): {
+  compositionType: SchemaCompositionType
+  schemaNames: string[]
+  discriminatorPropertyName?: string
+} {
+  if (!schemaObj) {
+    return { compositionType: 'allOf', schemaNames: [] }
+  }
+
+  let compositionType: SchemaCompositionType = 'allOf'
+  let entries: unknown[] = []
+
+  for (const candidate of ['allOf', 'anyOf', 'oneOf']) {
+    const value = schemaObj[candidate]
+    if (Array.isArray(value) && value.length > 0 && isSchemaCompositionType(candidate)) {
+      compositionType = candidate
+      entries = value
+      break
+    }
+  }
+
+  const schemaNames = entries
+    .map((entry) => extractSchemaRefName(asObject(entry)))
+    .filter((name) => name.trim() !== '')
+
+  const discriminatorObj = asObject(schemaObj['discriminator'])
+  const discriminatorPropertyName = typeof discriminatorObj?.['propertyName'] === 'string'
+    ? discriminatorObj['propertyName'].trim()
+    : ''
+
+  return {
+    compositionType,
+    schemaNames,
+    ...(discriminatorPropertyName ? { discriminatorPropertyName } : {})
+  }
 }
 
 function isSchemaType(value: string): value is SchemaPropertyType {
@@ -664,11 +756,26 @@ function buildOpenApiSchemas(schemas: SchemaDetail[]): Record<string, unknown> {
       }
 
       if (property.type === 'object') {
-        const objectSchemaName = property.objectSchemaName?.trim() ?? ''
-        if (objectSchemaName) {
+        const objectSchemaNames = (property.objectSchemaNames ?? [])
+          .map((name) => name.trim())
+          .filter(Boolean)
+        const legacyObjectSchemaName = property.objectSchemaName?.trim() ?? ''
+        const composedSchemaNames = objectSchemaNames.length > 0
+          ? objectSchemaNames
+          : (legacyObjectSchemaName ? [legacyObjectSchemaName] : [])
+
+        if (composedSchemaNames.length > 0) {
+          const compositionType = property.objectCompositionType ?? 'allOf'
+          const discriminatorPropertyName = property.objectDiscriminatorPropertyName?.trim() ?? ''
+
           properties[propName] = {
-            allOf: [{ $ref: `#/components/schemas/${objectSchemaName}` }],
-            ...(property.description ? { description: property.description } : {})
+            [compositionType]: composedSchemaNames.map((schemaName) => ({
+              $ref: `#/components/schemas/${schemaName}`
+            })),
+            ...(property.description ? { description: property.description } : {}),
+            ...(discriminatorPropertyName
+              ? { discriminator: { propertyName: discriminatorPropertyName } }
+              : {})
           }
           continue
         }
@@ -680,12 +787,56 @@ function buildOpenApiSchemas(schemas: SchemaDetail[]): Record<string, unknown> {
       }
     }
 
-    result[schemaName] = {
-      type: 'object',
-      ...(schema.description ? { description: schema.description } : {}),
-      ...(schema.usageTag ? { [SCHEMA_USAGE_EXTENSION]: schema.usageTag } : {}),
-      properties,
-      ...(required.length > 0 ? { required } : {})
+    // Collect unnamed (inlined) properties: object composition → schema level; array → schema is an array
+    let schemaLevelCompositionEntry: Record<string, unknown> = {}
+    let schemaLevelArrayEntry: Record<string, unknown> | null = null
+
+    for (const property of schema.properties) {
+      if (property.name.trim() !== '') continue
+
+      if (property.type === 'object') {
+        const objectSchemaNames = (property.objectSchemaNames ?? [])
+          .map((n) => n.trim())
+          .filter(Boolean)
+        const composedSchemaNames = objectSchemaNames.length > 0
+          ? objectSchemaNames
+          : (property.objectSchemaName?.trim() ? [property.objectSchemaName.trim()] : [])
+
+        if (composedSchemaNames.length > 0) {
+          const compositionType = property.objectCompositionType ?? 'allOf'
+          const discriminatorPropertyName = property.objectDiscriminatorPropertyName?.trim() ?? ''
+          schemaLevelCompositionEntry = {
+            [compositionType]: composedSchemaNames.map((n) => ({ $ref: `#/components/schemas/${n}` })),
+            ...(discriminatorPropertyName ? { discriminator: { propertyName: discriminatorPropertyName } } : {})
+          }
+        }
+      }
+
+      if (property.type === 'array') {
+        const itemSchemaName = property.arrayItemSchemaName?.trim() ?? ''
+        const items = itemSchemaName
+          ? { $ref: `#/components/schemas/${itemSchemaName}` }
+          : { type: property.arrayItemType ?? 'string' }
+        schemaLevelArrayEntry = { type: 'array', items }
+      }
+    }
+
+    if (schemaLevelArrayEntry) {
+      // Schema is itself an array — emit as array type, not object
+      result[schemaName] = {
+        ...schemaLevelArrayEntry,
+        ...(schema.description ? { description: schema.description } : {}),
+        ...(schema.usageTag ? { [SCHEMA_USAGE_EXTENSION]: schema.usageTag } : {})
+      }
+    } else {
+      result[schemaName] = {
+        type: 'object',
+        ...schemaLevelCompositionEntry,
+        ...(schema.description ? { description: schema.description } : {}),
+        ...(schema.usageTag ? { [SCHEMA_USAGE_EXTENSION]: schema.usageTag } : {}),
+        properties,
+        ...(required.length > 0 ? { required } : {})
+      }
     }
   }
 
@@ -702,12 +853,14 @@ function extractSchemaRefNameFromObject(schemaObj: Record<string, unknown> | nul
     return directRefName
   }
 
-  const allOf = Array.isArray(schemaObj['allOf']) ? schemaObj['allOf'] : []
-  for (const entry of allOf) {
-    const candidate = asObject(entry)
-    const refName = extractSchemaRefName(candidate)
-    if (refName) {
-      return refName
+  for (const key of ['allOf', 'anyOf', 'oneOf']) {
+    const entries = Array.isArray(schemaObj[key]) ? schemaObj[key] : []
+    for (const entry of entries) {
+      const candidate = asObject(entry)
+      const refName = extractSchemaRefName(candidate)
+      if (refName) {
+        return refName
+      }
     }
   }
 

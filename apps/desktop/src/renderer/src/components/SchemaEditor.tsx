@@ -4,8 +4,10 @@ import type {
   SchemaPropertyDetail,
   SchemaPrimitiveType,
   SchemaPropertyType,
-  SchemaUsageTag
+  SchemaUsageTag,
+  SchemaCompositionType
 } from '@apicaramba/shared-types'
+import { buildExampleFromSchemaName } from '../utils/schemaExampleUtils.js'
 
 export function SchemaEditor({
   schema,
@@ -22,11 +24,21 @@ export function SchemaEditor({
   onUpdateProperty: (propertyId: string, patch: Partial<SchemaPropertyDetail>) => void
   onDeleteProperty: (propertyId: string) => void
 }): React.JSX.Element {
+  const [showPreview, setShowPreview] = React.useState(false)
+
   const typeOptions: SchemaPropertyType[] = ['string', 'number', 'integer', 'boolean', 'array', 'object']
   const primitiveOptions: SchemaPrimitiveType[] = ['string', 'number', 'integer', 'boolean']
+  const compositionOptions: SchemaCompositionType[] = ['allOf', 'anyOf', 'oneOf']
   const schemaOptions = availableSchemas
     .filter((candidate) => candidate.id !== schema.id)
     .sort((a, b) => a.name.localeCompare(b.name))
+
+  const jsonPreviewText = React.useMemo(() => {
+    if (!showPreview) return ''
+    const schemasByName = new Map(availableSchemas.map((s) => [s.name, s]))
+    const example = buildExampleFromSchemaName(schema.name, schemasByName, new Set<string>())
+    return JSON.stringify(example, null, 2)
+  }, [showPreview, schema, availableSchemas])
 
   return (
     <div className="flex flex-col gap-4">
@@ -64,12 +76,20 @@ export function SchemaEditor({
       <div className="rounded-xl border border-surface-border bg-surface-lower/60">
         <div className="flex items-center justify-between px-3 py-2 border-b border-surface-border">
           <h4 className="text-xs font-semibold text-slate-200 uppercase tracking-wider">Properties</h4>
-          <button
-            className="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-md border border-surface-border text-slate-300 hover:bg-surface-raised"
-            onClick={onAddProperty}
-          >
-            + Add Property
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              className="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-md border border-surface-border text-slate-300 hover:bg-surface-raised"
+              onClick={() => setShowPreview((prev) => !prev)}
+            >
+              {showPreview ? 'Hide Preview' : 'Preview JSON'}
+            </button>
+            <button
+              className="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-md border border-surface-border text-slate-300 hover:bg-surface-raised"
+              onClick={onAddProperty}
+            >
+              + Add Property
+            </button>
+          </div>
         </div>
         {schema.properties.length === 0 ? (
           <p className="px-3 py-3 text-xs text-slate-500">No properties defined.</p>
@@ -87,14 +107,23 @@ export function SchemaEditor({
                 </tr>
               </thead>
               <tbody>
-                {schema.properties.map((property) => (
+                {schema.properties.map((property) => {
+                  const objectSchemaNames = property.objectSchemaNames ?? (property.objectSchemaName ? [property.objectSchemaName] : [])
+
+                  return (
                   <tr key={property.id} className="border-b border-surface-border/70 align-top">
                     <td className="px-3 py-2">
-                      <input
-                        className="w-full rounded border border-surface-border bg-surface-base px-2 py-1 text-xs text-slate-100 outline-none focus:border-primary/60 font-mono"
-                        value={property.name}
-                        onChange={(event) => onUpdateProperty(property.id, { name: event.target.value })}
-                      />
+                      {property.name === '' ? (
+                        <span className="inline-flex items-center gap-1 rounded border border-dashed border-primary/40 bg-primary/5 px-2 py-1 text-xs text-primary/70 italic select-none">
+                          (inlined)
+                        </span>
+                      ) : (
+                        <input
+                          className="w-full rounded border border-surface-border bg-surface-base px-2 py-1 text-xs text-slate-100 outline-none focus:border-primary/60 font-mono"
+                          value={property.name}
+                          onChange={(event) => onUpdateProperty(property.id, { name: event.target.value })}
+                        />
+                      )}
                     </td>
                     <td className="px-3 py-2">
                       <select
@@ -114,7 +143,10 @@ export function SchemaEditor({
                           if (nextType === 'object') {
                             onUpdateProperty(property.id, {
                               type: nextType,
-                              objectSchemaName: property.objectSchemaName ?? ''
+                              objectSchemaName: property.objectSchemaName ?? '',
+                              objectCompositionType: property.objectCompositionType ?? 'allOf',
+                              objectSchemaNames: property.objectSchemaNames ?? (property.objectSchemaName ? [property.objectSchemaName] : []),
+                              objectDiscriminatorPropertyName: property.objectDiscriminatorPropertyName ?? ''
                             })
                             return
                           }
@@ -123,7 +155,10 @@ export function SchemaEditor({
                             type: nextType,
                             arrayItemType: undefined,
                             arrayItemSchemaName: undefined,
-                            objectSchemaName: undefined
+                            objectSchemaName: undefined,
+                            objectCompositionType: undefined,
+                            objectSchemaNames: undefined,
+                            objectDiscriminatorPropertyName: undefined
                           })
                         }}
                       >
@@ -180,16 +215,52 @@ export function SchemaEditor({
                           )}
                         </div>
                       ) : property.type === 'object' ? (
-                        <select
-                          className="w-full rounded border border-surface-border bg-surface-base px-2 py-1 text-xs text-slate-100 outline-none focus:border-primary/60"
-                          value={property.objectSchemaName ?? ''}
-                          onChange={(event) => onUpdateProperty(property.id, { objectSchemaName: event.target.value })}
-                        >
-                          <option value="">Inline object</option>
-                          {schemaOptions.map((schemaOption) => (
-                            <option key={schemaOption.id} value={schemaOption.name}>{schemaOption.name}</option>
-                          ))}
-                        </select>
+                        <div className="flex flex-col gap-2">
+                          <select
+                            className="w-full rounded border border-surface-border bg-surface-base px-2 py-1 text-xs text-slate-100 outline-none focus:border-primary/60"
+                            value={property.objectCompositionType ?? 'allOf'}
+                            onChange={(event) => onUpdateProperty(property.id, { objectCompositionType: event.target.value as SchemaCompositionType })}
+                          >
+                            {compositionOptions.map((composition) => (
+                              <option key={composition} value={composition}>{composition}</option>
+                            ))}
+                          </select>
+                          <div className="max-h-24 overflow-y-auto rounded border border-surface-border bg-surface-base p-1.5">
+                            {schemaOptions.length === 0 ? (
+                              <p className="text-slate-500">No schemas</p>
+                            ) : (
+                              <div className="flex flex-col gap-1">
+                                {schemaOptions.map((schemaOption) => {
+                                  const checked = objectSchemaNames.includes(schemaOption.name)
+                                  return (
+                                    <label key={schemaOption.id} className="inline-flex items-center gap-1.5 text-slate-200">
+                                      <input
+                                        type="checkbox"
+                                        checked={checked}
+                                        onChange={(event) => {
+                                          const nextSchemaNames = event.target.checked
+                                            ? [...objectSchemaNames, schemaOption.name]
+                                            : objectSchemaNames.filter((name) => name !== schemaOption.name)
+                                          onUpdateProperty(property.id, {
+                                            objectSchemaNames: nextSchemaNames,
+                                            objectSchemaName: nextSchemaNames[0] ?? ''
+                                          })
+                                        }}
+                                      />
+                                      <span>{schemaOption.name}</span>
+                                    </label>
+                                  )
+                                })}
+                              </div>
+                            )}
+                          </div>
+                          <input
+                            className="w-full rounded border border-surface-border bg-surface-base px-2 py-1 text-xs text-slate-100 outline-none focus:border-primary/60"
+                            value={property.objectDiscriminatorPropertyName ?? ''}
+                            onChange={(event) => onUpdateProperty(property.id, { objectDiscriminatorPropertyName: event.target.value })}
+                            placeholder="Discriminator property name (optional)"
+                          />
+                        </div>
                       ) : (
                         <span className="text-slate-500">-</span>
                       )}
@@ -199,6 +270,7 @@ export function SchemaEditor({
                         type="checkbox"
                         checked={property.required}
                         onChange={(event) => onUpdateProperty(property.id, { required: event.target.checked })}
+                        disabled={property.name === ''}
                       />
                     </td>
                     <td className="px-3 py-2">
@@ -214,12 +286,23 @@ export function SchemaEditor({
                       </button>
                     </td>
                   </tr>
-                ))}
+                  )
+                })}
               </tbody>
             </table>
           </div>
         )}
       </div>
+
+      {showPreview && (
+        <div className="rounded-xl border border-surface-border bg-surface-lower/60">
+          <div className="flex items-center justify-between px-3 py-2 border-b border-surface-border">
+            <h4 className="text-xs font-semibold text-slate-200 uppercase tracking-wider">JSON Preview</h4>
+            <span className="text-xs text-slate-500">Resolved example based on current schema</span>
+          </div>
+          <pre className="px-4 py-3 text-xs text-slate-200 font-mono overflow-x-auto whitespace-pre max-h-96 overflow-y-auto">{jsonPreviewText}</pre>
+        </div>
+      )}
     </div>
   )
 }
