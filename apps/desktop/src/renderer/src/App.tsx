@@ -56,6 +56,7 @@ export default function App(): React.JSX.Element {
   const [environmentsMessage, setEnvironmentsMessage] = React.useState<string | null>(null)
   const [selectedFolderId, setSelectedFolderId] = React.useState<string | null>(null)
   const [draggingOperationId, setDraggingOperationId] = React.useState<string | null>(null)
+  const [draggingFolderId, setDraggingFolderId] = React.useState<string | null>(null)
   const [openApiMenuId, setOpenApiMenuId] = React.useState<string | null>(null)
   const [showEnvironmentPanel, setShowEnvironmentPanel] = React.useState(false)
   const [savedStructureHash, setSavedStructureHash] = React.useState('')
@@ -379,6 +380,54 @@ export default function App(): React.JSX.Element {
     setNewFolderName('')
   }
 
+  function collectAndRemoveFolder(parent: FolderNode, folderId: string): FolderNode | null {
+    const idx = parent.children.findIndex((c) => c.id === folderId)
+    if (idx >= 0) {
+      const [removed] = parent.children.splice(idx, 1)
+      return removed ?? null
+    }
+    for (const child of parent.children) {
+      const removed = collectAndRemoveFolder(child, folderId)
+      if (removed) return removed
+    }
+    return null
+  }
+
+  function isFolderAncestorOrSelf(folder: FolderNode, candidateId: string): boolean {
+    if (folder.id === candidateId) return true
+    return folder.children.some((c) => isFolderAncestorOrSelf(c, candidateId))
+  }
+
+  function onDropFolder(folderId: string, targetParentId: string | null): void {
+    if (!editorState) return
+
+    updateStructure((draft) => {
+      // Prevent dropping onto self or a descendant
+      if (targetParentId !== null) {
+        const dragged = findFolderById(draft.rootFolder, folderId)
+        if (!dragged) return
+        if (isFolderAncestorOrSelf(dragged, targetParentId)) return
+      }
+
+      const removed = collectAndRemoveFolder(draft.rootFolder, folderId)
+      if (!removed) return
+
+      if (targetParentId === null) {
+        draft.rootFolder.children.push(removed)
+        return
+      }
+
+      const target = findFolderById(draft.rootFolder, targetParentId)
+      if (!target) {
+        draft.rootFolder.children.push(removed)
+        return
+      }
+
+      target.children.push(removed)
+    })
+    setDraggingFolderId(null)
+  }
+
   function collectAndRemoveOperation(folder: FolderNode, operationId: string): OperationRef | null {
     const opIndex = folder.operations.findIndex((op) => op.id === operationId)
     if (opIndex >= 0) {
@@ -533,6 +582,10 @@ export default function App(): React.JSX.Element {
                 onSelectFolder={setSelectedFolderId}
                 draggingOperationId={draggingOperationId}
                 onDropOperation={onDropOperation}
+                draggingFolderId={draggingFolderId}
+                onFolderDragStart={setDraggingFolderId}
+                onFolderDragEnd={() => setDraggingFolderId(null)}
+                onDropFolder={onDropFolder}
               />
             </div>
           ) : null}
