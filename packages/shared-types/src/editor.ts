@@ -1,6 +1,7 @@
 import type { HttpMethod } from './api.js'
 import type { ApiStructure } from './api.js'
 import type { OpenApiValidationIssue } from './validation.js'
+import type { WorkspaceSnapshot } from './workspace.js'
 
 /**
  * A single operation with all fields needed for the editor panel.
@@ -19,7 +20,7 @@ export interface OperationDetail {
 
 export interface LoadApiEditorRequest {
   workspaceRootPath: string
-  /** Relative path from workspace root, e.g. "apis/payments/payments-spec.json" */
+  /** Relative path from workspace root, e.g. "apis/payments/payments-spec.json" or "apis/payments/openapi.yaml" */
   openapiRelativePath: string
 }
 
@@ -29,6 +30,7 @@ export type LoadApiEditorResult =
 
 export interface SaveApiEditorRequest {
   workspaceRootPath: string
+  /** Relative path to the current source file. May be .json, .yaml, or .yml. */
   openapiRelativePath: string
   /** Full list of operations with their current (possibly edited) field values. */
   operations: OperationDetail[]
@@ -37,6 +39,6 @@ export interface SaveApiEditorRequest {
 }
 
 export type SaveApiEditorResult =
-  | { status: 'saved' }
+  | { status: 'saved'; openapiRelativePath: string; snapshot: WorkspaceSnapshot }
   | { status: 'validation-failed'; issueCount: number; issues: OpenApiValidationIssue[] }
   | { status: 'error'; message: string }

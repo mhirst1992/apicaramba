@@ -36,6 +36,35 @@ const MINIMAL_OPENAPI = JSON.stringify({
   }
 })
 
+const MINIMAL_OPENAPI_YAML = `openapi: 3.0.3
+info:
+  title: Test API
+  version: 1.0.0
+paths:
+  /items:
+    get:
+      operationId: listItems
+      summary: List items
+      description: Returns all items
+      tags:
+        - items
+      responses:
+        '200':
+          description: Success
+    post:
+      operationId: createItem
+      summary: Create item
+      responses:
+        '201':
+          description: Created
+  /items/{id}:
+    get:
+      operationId: getItem
+      responses:
+        '200':
+          description: Success
+`
+
 describe('loadApiEditor', () => {
   it('loads operation details from an openapi.json with no existing structure', async () => {
     const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'apicaramba-editor-test-'))
@@ -141,17 +170,36 @@ describe('loadApiEditor', () => {
       await rm(tempRoot, { recursive: true, force: true })
     }
   })
+
+  it('loads operation details from YAML OpenAPI files', async () => {
+    const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'apicaramba-editor-yaml-test-'))
+    const apiDir = path.join(tempRoot, 'apis', 'test')
+    const openapiPath = path.join(apiDir, 'openapi.yaml')
+
+    try {
+      await mkdir(apiDir, { recursive: true })
+      await writeFile(openapiPath, MINIMAL_OPENAPI_YAML, 'utf8')
+
+      const { operations } = await loadApiEditor(tempRoot, 'apis/test/openapi.yaml')
+
+      expect(operations).toHaveLength(3)
+      expect(operations[0]?.key).toBeDefined()
+      expect(operations.some((op) => op.key === 'GET:/items')).toBe(true)
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true })
+    }
+  })
 })
 
 describe('buildUpdatedDocument', () => {
-  it('applies summary and description edits to the document', () => {
+  it('applies summary and description edits to the document', async () => {
     const operations = [
       { key: 'GET:/items', operationId: 'listItems', method: 'GET' as const, path: '/items', summary: 'Updated list', description: 'New description', tags: ['items'] },
       { key: 'POST:/items', operationId: 'createItem', method: 'POST' as const, path: '/items', summary: 'Create item', description: '', tags: [] },
       { key: 'GET:/items/{id}', operationId: 'getItem', method: 'GET' as const, path: '/items/{id}', summary: 'Fetch one item', description: '', tags: [] }
     ]
 
-    const result = buildUpdatedDocument(MINIMAL_OPENAPI, operations)
+    const result = await buildUpdatedDocument(MINIMAL_OPENAPI, operations)
     const parsed = JSON.parse(result) as { paths: Record<string, Record<string, { summary?: string; description?: string }>> }
 
     expect(parsed.paths['/items']?.get?.summary).toBe('Updated list')
@@ -160,18 +208,32 @@ describe('buildUpdatedDocument', () => {
     expect(parsed.paths['/items']?.post?.description).toBeUndefined()
   })
 
-  it('preserves other operation fields not in the edit payload', () => {
+  it('preserves other operation fields not in the edit payload', async () => {
     const operations = [
       { key: 'GET:/items', operationId: 'listItems', method: 'GET' as const, path: '/items', summary: 'Updated', description: '', tags: [] },
       { key: 'POST:/items', operationId: 'createItem', method: 'POST' as const, path: '/items', summary: 'Create item', description: '', tags: [] },
       { key: 'GET:/items/{id}', operationId: 'getItem', method: 'GET' as const, path: '/items/{id}', summary: '', description: '', tags: [] }
     ]
 
-    const result = buildUpdatedDocument(MINIMAL_OPENAPI, operations)
+    const result = await buildUpdatedDocument(MINIMAL_OPENAPI, operations)
     const parsed = JSON.parse(result) as { paths: Record<string, Record<string, { operationId?: string; responses?: unknown }>> }
 
     expect(parsed.paths['/items']?.get?.operationId).toBe('listItems')
     expect(parsed.paths['/items']?.get?.responses).toBeDefined()
+  })
+
+  it('parses YAML input and emits JSON output', async () => {
+    const operations = [
+      { key: 'GET:/items', operationId: 'listItems', method: 'GET' as const, path: '/items', summary: 'Updated list', description: '', tags: ['items'] },
+      { key: 'POST:/items', operationId: 'createItem', method: 'POST' as const, path: '/items', summary: 'Create item', description: '', tags: [] },
+      { key: 'GET:/items/{id}', operationId: 'getItem', method: 'GET' as const, path: '/items/{id}', summary: '', description: '', tags: [] }
+    ]
+
+    const result = await buildUpdatedDocument(MINIMAL_OPENAPI_YAML, operations)
+    const parsed = JSON.parse(result) as { openapi: string; paths: Record<string, Record<string, { summary?: string }>> }
+
+    expect(parsed.openapi).toBe('3.0.3')
+    expect(parsed.paths['/items']?.get?.summary).toBe('Updated list')
   })
 })
 
@@ -231,6 +293,38 @@ describe('saveStructure', () => {
       const ids = written.apis.map((a) => a.id)
       expect(ids).toContain('apis__other')
       expect(ids).toContain('apis__payments')
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('replaces legacy structure ids when migrating an API path', async () => {
+    const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'apicaramba-structure-replace-test-'))
+
+    try {
+      const toolDir = path.join(tempRoot, '.api-tool')
+      await mkdir(toolDir, { recursive: true })
+      await writeFile(
+        path.join(toolDir, 'structure.json'),
+        JSON.stringify({ version: '1', apis: [{ id: 'apis__demo__openapi.yaml', name: 'Demo API', path: 'apis/demo', rootFolder: { id: 'apis__demo__openapi.yaml__root', name: 'root', children: [], operations: [] }, ungrouped: [] }] }),
+        'utf8'
+      )
+
+      const migratedStructure = {
+        id: 'apis__demo__openapi.json',
+        name: 'Demo API',
+        path: 'apis/demo',
+        rootFolder: { id: 'apis__demo__openapi.json__root', name: 'root', children: [], operations: [] },
+        ungrouped: []
+      }
+
+      await saveStructure(tempRoot, migratedStructure, ['apis__demo__openapi.yaml'])
+
+      const writtenRaw = await readFile(path.join(toolDir, 'structure.json'), 'utf8')
+      const written = JSON.parse(writtenRaw) as { apis: { id: string }[] }
+
+      expect(written.apis).toHaveLength(1)
+      expect(written.apis[0]?.id).toBe('apis__demo__openapi.json')
     } finally {
       await rm(tempRoot, { recursive: true, force: true })
     }

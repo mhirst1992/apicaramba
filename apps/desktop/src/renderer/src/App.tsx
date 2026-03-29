@@ -595,6 +595,8 @@ export default function App(): React.JSX.Element {
     if (!snapshot || !editorState) return
     setSaveStatus('saving')
     try {
+      const previousOpenapiPath = editorState.api.openapiPath
+      const previousSelectedOpKey = selectedOpKey
       const result: SaveApiEditorResult = await window.appBridge.saveApiEditor({
         workspaceRootPath: snapshot.workspace.rootPath,
         openapiRelativePath: editorState.api.openapiPath,
@@ -602,11 +604,29 @@ export default function App(): React.JSX.Element {
         structure: editorState.structure
       })
       if (result.status === 'saved') {
-        setEditorState((prev) => prev ? { ...prev, operations: mergedOperations } : prev)
-        setEditedOps({})
-        if (editorState) {
-          setSavedStructureHash(JSON.stringify(editorState.structure))
+        setSnapshot(result.snapshot)
+
+        if (result.openapiRelativePath !== previousOpenapiPath) {
+          const migratedApi = result.snapshot.apis.find((api) => api.openapiPath === result.openapiRelativePath) ?? null
+          if (!migratedApi) {
+            setSaveStatus({ type: 'error', message: 'Saved API was not found after converting YAML to JSON.' })
+            return
+          }
+
+          setSelectedApiId(migratedApi.id)
+          await loadEditorForApi(result.snapshot.workspace.rootPath, migratedApi)
+          if (previousSelectedOpKey) {
+            setSelectedOpKey(previousSelectedOpKey)
+          }
+        } else {
+          const currentApi = result.snapshot.apis.find((api) => api.openapiPath === previousOpenapiPath) ?? editorState.api
+          setEditorState((prev) => prev ? { ...prev, api: currentApi, operations: mergedOperations } : prev)
+          if (editorState) {
+            setSavedStructureHash(JSON.stringify(editorState.structure))
+          }
         }
+
+        setEditedOps({})
         setSaveStatus('saved')
         setTimeout(() => setSaveStatus('idle'), 2500)
       } else if (result.status === 'validation-failed') {

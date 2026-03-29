@@ -1,6 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, IpcMainEvent } from 'electron'
 import { promises as fs } from 'node:fs'
-import { join, resolve } from 'path'
+import { dirname, join, resolve } from 'path'
 import {
   loadWorkspaceSnapshot,
   loadApiEditor,
@@ -34,7 +34,8 @@ import type {
   LoadEnvironmentsResult,
   SaveEnvironmentsRequest,
   SaveEnvironmentsResult,
-  ExecuteRequestRequest
+  ExecuteRequestRequest,
+  ApiStructure
 } from '@apicaramba/shared-types'
 
 const isDev = !app.isPackaged
@@ -65,6 +66,36 @@ interface NewApiDocument {
     version: string
   }
   paths: Record<string, never>
+}
+
+function toJsonOpenApiRelativePath(relativePath: string): string {
+  if (relativePath.toLowerCase().endsWith('.yaml')) {
+    return relativePath.slice(0, -5) + '.json'
+  }
+  if (relativePath.toLowerCase().endsWith('.yml')) {
+    return relativePath.slice(0, -4) + '.json'
+  }
+  return relativePath
+}
+
+function toStructureId(input: string): string {
+  return input.replaceAll('\\', '/').toLowerCase().replace(/[^a-z0-9/._-]+/g, '-').replaceAll('/', '__')
+}
+
+function migrateStructureForPath(structure: ApiStructure, openapiRelativePath: string): ApiStructure {
+  const nextId = toStructureId(openapiRelativePath)
+  if (structure.id === nextId) {
+    return structure
+  }
+
+  return {
+    ...structure,
+    id: nextId,
+    rootFolder: {
+      ...structure.rootFolder,
+      id: `${nextId}__root`
+    }
+  }
 }
 
 function createWindow(): void {
@@ -415,19 +446,34 @@ async function handleLoadApiEditor(request: LoadApiEditorRequest): Promise<LoadA
 }
 
 async function handleSaveApiEditor(request: SaveApiEditorRequest): Promise<SaveApiEditorResult> {
-  const absPath = resolve(request.workspaceRootPath, request.openapiRelativePath)
-  const tempPath = absPath + '.tmp'
+  const sourceRelativePath = request.openapiRelativePath
+  const targetRelativePath = toJsonOpenApiRelativePath(sourceRelativePath)
+  const sourceAbsPath = resolve(request.workspaceRootPath, sourceRelativePath)
+  const targetAbsPath = resolve(request.workspaceRootPath, targetRelativePath)
+  const tempPath = targetAbsPath + '.tmp'
 
   try {
-    const rawJson = await fs.readFile(absPath, 'utf8')
-    const updatedJson = buildUpdatedDocument(rawJson, request.operations)
+    if (sourceAbsPath !== targetAbsPath) {
+      try {
+        await fs.access(targetAbsPath)
+        return {
+          status: 'error',
+          message: `Cannot save as JSON because ${targetRelativePath} already exists.`
+        }
+      } catch {
+        // Target does not exist yet - safe to migrate.
+      }
+    }
+
+    const rawSource = await fs.readFile(sourceAbsPath, 'utf8')
+    const updatedJson = await buildUpdatedDocument(rawSource, request.operations)
 
     // Write to temp file first so we can validate without touching the real file
     await fs.writeFile(tempPath, updatedJson, 'utf8')
 
     const validationResult = await validateOpenApiDocument({
       workspaceRootPath: request.workspaceRootPath,
-      openapiRelativePath: request.openapiRelativePath + '.tmp'
+      openapiRelativePath: targetRelativePath + '.tmp'
     })
 
     if (validationResult.status === 'invalid') {
@@ -449,13 +495,21 @@ async function handleSaveApiEditor(request: SaveApiEditorRequest): Promise<SaveA
     }
 
     // Validation passed - commit the write
-    await writeJsonFile(absPath, JSON.parse(updatedJson) as unknown)
+    await fs.mkdir(dirname(targetAbsPath), { recursive: true })
+    await writeJsonFile(targetAbsPath, JSON.parse(updatedJson) as unknown)
     await fs.unlink(tempPath).catch(() => undefined)
 
-    // Persist structure (creates .api-tool/ if not present)
-    await saveStructure(request.workspaceRootPath, request.structure)
+    if (sourceAbsPath !== targetAbsPath) {
+      await fs.unlink(sourceAbsPath).catch(() => undefined)
+    }
 
-    return { status: 'saved' }
+    // Persist structure (creates .api-tool/ if not present)
+    const migratedStructure = migrateStructureForPath(request.structure, targetRelativePath)
+    await saveStructure(request.workspaceRootPath, migratedStructure, [request.structure.id])
+
+    const snapshot = await loadWorkspaceSnapshot(request.workspaceRootPath)
+
+    return { status: 'saved', openapiRelativePath: targetRelativePath, snapshot }
   } catch (error) {
     await fs.unlink(tempPath).catch(() => undefined)
     return { status: 'error', message: error instanceof Error ? error.message : 'Save failed.' }
