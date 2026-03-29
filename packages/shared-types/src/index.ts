@@ -46,6 +46,7 @@ export type {
   SchemaUsageTag,
   SchemaPropertyType,
   SchemaPrimitiveType,
+  SchemaCompositionType,
   SchemaPropertyDetail,
   SchemaDetail,
   LoadApiEditorRequest,

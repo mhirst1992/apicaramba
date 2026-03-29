@@ -52,6 +52,7 @@ export interface ResponseSchemaAssignment {
 
 export type SchemaPropertyType = 'string' | 'number' | 'integer' | 'boolean' | 'array' | 'object'
 export type SchemaPrimitiveType = 'string' | 'number' | 'integer' | 'boolean'
+export type SchemaCompositionType = 'allOf' | 'anyOf' | 'oneOf'
 
 export type SchemaUsageTag = 'Rqst' | 'Resp' | 'Both'
 
@@ -65,6 +66,12 @@ export interface SchemaPropertyDetail {
   arrayItemSchemaName?: string
   /** For object properties, optional referenced schema name. */
   objectSchemaName?: string
+  /** For object properties, composition mode when referencing one or more schemas. */
+  objectCompositionType?: SchemaCompositionType
+  /** For object properties, optional referenced schema names used by the selected composition mode. */
+  objectSchemaNames?: string[]
+  /** OpenAPI discriminator.propertyName for composed object schemas. */
+  objectDiscriminatorPropertyName?: string
   required: boolean
   description: string
 }
