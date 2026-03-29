@@ -878,6 +878,14 @@ export default function App(): React.JSX.Element {
     }
   }
 
+  function onSelectOperation(operationKey: string, folderId: string | null): void {
+    setSelectedFolderId(folderId)
+    setSelectedOpKey(operationKey)
+    if (folderId !== SCHEMAS_FOLDER_ID) {
+      setSelectedSchemaId(null)
+    }
+  }
+
   function onCreateSchema(usageTag: SchemaUsageTag, explicitName?: string): void {
     if (!editorState) return
 
@@ -942,14 +950,13 @@ export default function App(): React.JSX.Element {
   const availableEnvironmentParameters = activeEnvironment?.parameters ?? []
   const environmentsDirty = JSON.stringify(environmentsConfig) !== JSON.stringify(environmentsDraft)
   const structureDirty = editorState ? JSON.stringify(editorState.structure) !== savedStructureHash : false
-  const activeFolderOperations = editorState ? operationsForSelectedFolder(editorState.structure) : []
   const hasAnyDirty = isDirty || schemaDirty || structureDirty
 
   return (
     <div className="flex flex-col h-full bg-surface-base text-slate-100">
       <TitleBar workspaceName={snapshot?.workspace.rootPath.split(/[\\/]/).pop()} />
       <div className="flex flex-1 overflow-hidden">
-      <aside className="w-80 shrink-0 flex flex-col bg-surface-lower border-r border-surface-border">
+      <aside className="w-96 shrink-0 flex flex-col bg-surface-lower border-r border-surface-border">
         <div className="flex items-center justify-between px-4 h-12 border-b border-surface-border shrink-0">
           <span className="text-xs font-semibold text-slate-300 truncate">
             {snapshot?.workspace.rootPath.split(/[\\/]/).pop() ?? 'Workspace'}
@@ -1008,10 +1015,14 @@ export default function App(): React.JSX.Element {
                     <EndpointTree
                       structure={editorState.structure}
                       selectedFolderId={selectedFolderId}
+                      selectedOperationKey={selectedOpKey}
                       onSelectFolder={onSelectFolder}
+                      onSelectOperation={onSelectOperation}
                       schemaCount={mergedSchemas.length}
                       schemasFolderId={SCHEMAS_FOLDER_ID}
                       draggingOperationId={draggingOperationId}
+                      onOperationDragStart={setDraggingOperationId}
+                      onOperationDragEnd={() => setDraggingOperationId(null)}
                       onDropOperation={onDropOperation}
                       draggingFolderId={draggingFolderId}
                       onFolderDragStart={setDraggingFolderId}
@@ -1132,50 +1143,6 @@ export default function App(): React.JSX.Element {
         </main>
       ) : (
         <main className="flex-1 flex overflow-hidden">
-          <section className="w-80 shrink-0 flex flex-col border-r border-surface-border overflow-hidden">
-            <div className="flex items-center px-4 h-12 border-b border-surface-border shrink-0">
-              <span className="text-sm font-semibold text-slate-200 truncate">
-                {selectedFolderId === SCHEMAS_FOLDER_ID
-                  ? 'Schemas'
-                  : selectedFolderId === null
-                    ? 'Unsorted Methods'
-                    : 'Folder Methods'}
-              </span>
-              {selectedFolderId === SCHEMAS_FOLDER_ID ? (
-                <button
-                  className="ml-auto inline-flex items-center justify-center w-6 h-6 rounded border border-surface-border text-slate-300 hover:bg-surface-raised"
-                  title="New Schema"
-                  onClick={() => setShowCreateSchemaModal(true)}
-                >
-                  +
-                </button>
-              ) : null}
-            </div>
-            <div className="flex-1 overflow-y-auto px-2 py-3">
-              {editorLoading ? (
-                <TreeSkeleton />
-              ) : editorState ? (
-                selectedFolderId === SCHEMAS_FOLDER_ID ? (
-                  <SchemasPanel
-                    schemas={mergedSchemas}
-                    selectedSchemaId={selectedSchemaId}
-                    onSelectSchema={setSelectedSchemaId}
-                  />
-                ) : (
-                  <MethodsPanel
-                    operations={activeFolderOperations}
-                    selectedOperationKey={selectedOpKey}
-                    onSelectOperation={setSelectedOpKey}
-                    onDragStart={setDraggingOperationId}
-                    onDragEnd={() => setDraggingOperationId(null)}
-                  />
-                )
-              ) : (
-                <p className="text-xs text-slate-500 px-2">Select an API to browse operations.</p>
-              )}
-            </div>
-          </section>
-
           <section className="flex-1 flex flex-col overflow-hidden">
             <div className="flex items-center justify-between gap-4 px-6 h-12 border-b border-surface-border shrink-0">
               <span className="text-xs text-slate-400 truncate">
@@ -1221,15 +1188,39 @@ export default function App(): React.JSX.Element {
                   <ValidationResultPanel result={validationResult} />
                 </div>
               ) : null}
-              {selectedFolderId === SCHEMAS_FOLDER_ID && selectedSchema ? (
-                <SchemaEditor
-                  schema={selectedSchema}
-                  availableSchemas={mergedSchemas}
-                  onChange={onSchemaChange}
-                  onAddProperty={() => addSchemaProperty(selectedSchema)}
-                  onUpdateProperty={(propertyId, patch) => updateSchemaProperty(selectedSchema, propertyId, patch)}
-                  onDeleteProperty={(propertyId) => deleteSchemaProperty(selectedSchema, propertyId)}
-                />
+              {selectedFolderId === SCHEMAS_FOLDER_ID ? (
+                <div className="flex flex-col gap-4">
+                  <div className="flex items-center gap-2">
+                    <select
+                      className="max-w-md bg-surface-lower border border-surface-border rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-primary/60"
+                      value={selectedSchemaId ?? ''}
+                      onChange={(event) => setSelectedSchemaId(event.target.value || null)}
+                    >
+                      <option value="">Select a schema</option>
+                      {mergedSchemas.map((schema) => (
+                        <option key={schema.id} value={schema.id}>{schema.name}</option>
+                      ))}
+                    </select>
+                    <button
+                      className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg border border-primary/35 text-slate-200 hover:bg-primary/15 transition-colors"
+                      onClick={() => setShowCreateSchemaModal(true)}
+                    >
+                      New Schema
+                    </button>
+                  </div>
+                  {selectedSchema ? (
+                    <SchemaEditor
+                      schema={selectedSchema}
+                      availableSchemas={mergedSchemas}
+                      onChange={onSchemaChange}
+                      onAddProperty={() => addSchemaProperty(selectedSchema)}
+                      onUpdateProperty={(propertyId, patch) => updateSchemaProperty(selectedSchema, propertyId, patch)}
+                      onDeleteProperty={(propertyId) => deleteSchemaProperty(selectedSchema, propertyId)}
+                    />
+                  ) : (
+                    <p className="text-sm text-slate-400">Select a schema to edit it, or create a new one.</p>
+                  )}
+                </div>
               ) : selectedOperation && editorState ? (
                 detailTab === 'run' ? (
                   <RequestRunner
@@ -1250,11 +1241,7 @@ export default function App(): React.JSX.Element {
               ) : editorLoading ? (
                 <EditorSkeleton />
               ) : editorState ? (
-                <p className="text-sm text-slate-400">
-                  {selectedFolderId === SCHEMAS_FOLDER_ID
-                    ? 'Select a schema to edit it, or create a new one.'
-                    : 'Select an operation from the tree to edit it.'}
-                </p>
+                <p className="text-sm text-slate-400">Select an operation from the tree to edit it.</p>
               ) : (
                 <p className="text-sm text-slate-400">Open a workspace to get started.</p>
               )}
@@ -1912,69 +1899,6 @@ function ApiDropdownCard({
   )
 }
 
-function MethodsPanel({
-  operations,
-  selectedOperationKey,
-  onSelectOperation,
-  onDragStart,
-  onDragEnd
-}: {
-  operations: OperationRef[]
-  selectedOperationKey: string | null
-  onSelectOperation: (key: string) => void
-  onDragStart: (operationId: string) => void
-  onDragEnd: () => void
-}): React.JSX.Element {
-  const METHOD_COLOURS: Record<string, string> = {
-    GET: 'text-[#6C7D47]',
-    POST: 'text-[#FACC15]',
-    PUT: 'text-blue-400',
-    PATCH: 'text-purple-400',
-    DELETE: 'text-[#BC4B51]',
-    HEAD: 'text-slate-400',
-    OPTIONS: 'text-slate-400',
-    TRACE: 'text-slate-400'
-  }
-
-  return (
-    <div className="flex flex-col gap-1">
-      {operations.map((op) => {
-        const key = `${op.method}:${op.path}`
-        return (
-          <div
-            key={op.id}
-            className={`flex items-center gap-2 px-2 py-1.5 rounded border transition-colors ${
-              selectedOperationKey === key
-                ? 'bg-primary/15 border-primary/35'
-                : 'border-transparent hover:bg-surface-raised'
-            }`}
-          >
-            <button
-              className="text-slate-500 hover:text-slate-300 cursor-grab"
-              title="Drag to move"
-              draggable
-              onDragStart={() => onDragStart(op.id)}
-              onDragEnd={onDragEnd}
-            >
-              ⋮⋮
-            </button>
-            <button className="flex-1 text-left" onClick={() => onSelectOperation(key)}>
-              <span className={`font-mono text-xs font-semibold mr-2 ${METHOD_COLOURS[op.method] ?? 'text-slate-400'}`}>
-                {op.method}
-              </span>
-              <span className="text-xs text-slate-300 truncate">{op.path}</span>
-            </button>
-          </div>
-        )
-      })}
-
-      {operations.length === 0 ? (
-        <p className="text-xs text-slate-500 px-2 py-2">No methods in this folder.</p>
-      ) : null}
-    </div>
-  )
-}
-
 function TitleBar({ workspaceName }: { workspaceName?: string }): React.JSX.Element {
   const [maximized, setMaximized] = React.useState(false)
 
@@ -2066,16 +1990,6 @@ function BrandLogo(): React.JSX.Element {
   )
 }
 
-function TreeSkeleton(): React.JSX.Element {
-  return (
-    <div className="space-y-1.5 px-2" aria-hidden="true">
-      {[75, 55, 80, 60, 70].map((w, i) => (
-        <div key={i} className="h-7 rounded bg-surface-border animate-pulse" style={{ width: `${w}%` }} />
-      ))}
-    </div>
-  )
-}
-
 function EditorSkeleton(): React.JSX.Element {
   return (
     <div className="space-y-5" aria-hidden="true">
@@ -2098,42 +2012,6 @@ function SidebarPlaceholder(): React.JSX.Element {
       {[80, 60, 70].map((w, i) => (
         <div key={i} className="h-5 rounded bg-surface-border animate-pulse" style={{ width: `${w}%` }} />
       ))}
-    </div>
-  )
-}
-
-function SchemasPanel({
-  schemas,
-  selectedSchemaId,
-  onSelectSchema
-}: {
-  schemas: SchemaDetail[]
-  selectedSchemaId: string | null
-  onSelectSchema: (schemaId: string) => void
-}): React.JSX.Element {
-  return (
-    <div className="flex flex-col gap-1">
-      {schemas.map((schema) => (
-        <button
-          key={schema.id}
-          className={`text-left px-2 py-1.5 rounded border transition-colors text-xs ${
-            selectedSchemaId === schema.id
-              ? 'bg-primary/15 border-primary/35 text-slate-100'
-              : 'border-transparent hover:bg-surface-raised text-slate-300'
-          }`}
-          onClick={() => onSelectSchema(schema.id)}
-        >
-          <span className="font-mono">{schema.name}</span>
-          <span className="ml-2 text-slate-500">({schema.properties.length})</span>
-          <span className="ml-2 rounded border border-surface-border bg-surface-lower px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-slate-300">
-            {schema.usageTag ?? 'Both'}
-          </span>
-        </button>
-      ))}
-
-      {schemas.length === 0 ? (
-        <p className="text-xs text-slate-500 px-2 py-2">No schemas yet. Use + to create one.</p>
-      ) : null}
     </div>
   )
 }
