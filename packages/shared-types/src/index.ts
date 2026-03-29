@@ -8,8 +8,10 @@ export type {
   CreateWorkspaceResult,
   RecentWorkspace,
   OpenRecentWorkspaceRequest,
+  RemoveRecentWorkspaceRequest,
   LoadRecentWorkspacesResult,
   OpenRecentWorkspaceResult,
+  RemoveRecentWorkspaceResult,
   CreateApiRequest,
   CreateApiResult
 } from './workspace.js'

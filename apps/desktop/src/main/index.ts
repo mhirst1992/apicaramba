@@ -19,8 +19,10 @@ import type {
   CreateApiResult,
   RecentWorkspace,
   OpenRecentWorkspaceRequest,
+  RemoveRecentWorkspaceRequest,
   LoadRecentWorkspacesResult,
   OpenRecentWorkspaceResult,
+  RemoveRecentWorkspaceResult,
   ValidateOpenApiRequest,
   ValidateOpenApiResult,
   LoadApiEditorRequest,
@@ -263,6 +265,27 @@ async function handleOpenRecentWorkspace(
   }
 }
 
+async function handleRemoveRecentWorkspace(
+  request: RemoveRecentWorkspaceRequest
+): Promise<RemoveRecentWorkspaceResult> {
+  const rootPath = request.rootPath?.trim()
+  if (!rootPath) {
+    return { status: 'error', message: 'Workspace path is required.' }
+  }
+
+  try {
+    const existing = await loadRecentWorkspaceEntries()
+    const filtered = existing.filter((entry) => !compareWorkspacePath(entry.rootPath, rootPath))
+    await saveRecentWorkspaceEntries(filtered)
+    return { status: 'updated', workspaces: filtered }
+  } catch (error) {
+    return {
+      status: 'error',
+      message: error instanceof Error ? error.message : 'Failed to remove recent workspace.'
+    }
+  }
+}
+
 async function handleCreateApi(request: CreateApiRequest): Promise<CreateApiResult> {
   const workspaceRootPath = request.workspaceRootPath?.trim()
   const apiName = request.apiName?.trim()
@@ -478,6 +501,9 @@ app.whenReady().then(() => {
   ipcMain.handle('workspace:open-recent', (_, request: OpenRecentWorkspaceRequest) =>
     handleOpenRecentWorkspace(request)
   )
+  ipcMain.handle('workspace:remove-recent', (_, request: RemoveRecentWorkspaceRequest) =>
+    handleRemoveRecentWorkspace(request)
+  )
   ipcMain.handle('workspace:create-api', (_, request: CreateApiRequest) => handleCreateApi(request))
   ipcMain.handle('openapi:validate', (_, request: ValidateOpenApiRequest) => validateOpenApi(request))
   ipcMain.handle('openapi:load-editor', (_, request: LoadApiEditorRequest) => handleLoadApiEditor(request))
@@ -512,6 +538,7 @@ app.on('will-quit', () => {
   ipcMain.removeHandler('workspace:create')
   ipcMain.removeHandler('workspace:list-recent')
   ipcMain.removeHandler('workspace:open-recent')
+  ipcMain.removeHandler('workspace:remove-recent')
   ipcMain.removeHandler('workspace:create-api')
   ipcMain.removeHandler('openapi:validate')
   ipcMain.removeHandler('openapi:load-editor')

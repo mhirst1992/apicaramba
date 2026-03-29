@@ -169,6 +169,17 @@ export default function App(): React.JSX.Element {
     }
   }
 
+  async function onRemoveRecentWorkspace(rootPath: string): Promise<void> {
+    setOpenError(null)
+    const result = await window.appBridge.removeRecentWorkspace({ rootPath })
+    if (result.status === 'error') {
+      setOpenError(result.message)
+      return
+    }
+
+    setRecentWorkspaces(result.workspaces)
+  }
+
   async function onCreateApi(): Promise<void> {
     if (!snapshot) return
 
@@ -555,9 +566,9 @@ export default function App(): React.JSX.Element {
           <div className="max-w-3xl mx-auto px-8 py-10">
             <div className="flex items-center justify-between gap-4">
               <div className="space-y-1">
-                <h1 className="text-2xl font-bold tracking-tight">Open a workspace</h1>
+                <h1 className="text-2xl font-bold tracking-tight">Getting Started with Workspaces</h1>
                 <p className="text-sm text-slate-400 leading-relaxed">
-                  A workspace is a local folder containing your API definitions. Git is optional.
+                  A workspace is a local folder containing your API definitions.
                 </p>
               </div>
               <div className="flex items-center gap-3">
@@ -568,7 +579,6 @@ export default function App(): React.JSX.Element {
                 >
                   {loading ? 'Opening...' : 'Open Workspace'}
                 </button>
-                <span className="text-xs text-slate-400">...or</span>
                 <button
                   className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border border-surface-border text-slate-200 hover:bg-surface-raised transition-colors disabled:opacity-40"
                   onClick={() => {
@@ -595,21 +605,40 @@ export default function App(): React.JSX.Element {
                 </div>
                 <div className="mt-3 flex flex-col gap-2">
                   {recentWorkspaces.map((workspace) => (
-                    <button
+                    <div
                       key={workspace.rootPath}
-                      className="w-full text-left rounded-lg border border-surface-border bg-surface-base px-3 py-2 hover:border-primary/40 hover:bg-surface-raised transition-colors disabled:opacity-40"
-                      onClick={() => { void onOpenRecentWorkspace(workspace.rootPath) }}
-                      disabled={loading}
+                      className="w-full rounded-lg border border-surface-border bg-surface-base px-3 py-2 hover:border-primary/40 transition-colors"
                     >
-                      <div className="text-sm text-slate-100 truncate">{workspace.name}</div>
-                      <div className="text-xs text-slate-500 truncate mt-0.5">{workspace.rootPath}</div>
-                    </button>
+                      <div className="flex items-start gap-2">
+                        <button
+                          className="flex-1 text-left min-w-0 hover:text-white transition-colors disabled:opacity-40"
+                          onClick={() => { void onOpenRecentWorkspace(workspace.rootPath) }}
+                          disabled={loading}
+                        >
+                          <div className="text-sm text-slate-100 truncate">{workspace.name}</div>
+                          <div className="text-xs text-slate-500 truncate mt-0.5">{workspace.rootPath}</div>
+                        </button>
+                        <button
+                          title="Remove from recent"
+                          aria-label={`Remove ${workspace.name} from recent workspaces`}
+                          className="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-surface-border text-slate-400 hover:text-secondary hover:border-secondary/60 hover:bg-secondary/10 transition-colors disabled:opacity-40"
+                          onClick={() => { void onRemoveRecentWorkspace(workspace.rootPath) }}
+                          disabled={loading}
+                        >
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                            <path d="M4 7H20" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
+                            <path d="M9 7V5C9 3.89543 9.89543 3 11 3H13C14.1046 3 15 3.89543 15 5V7" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
+                            <path d="M7 7L8 19C8.09485 20.155 9.05832 21 10.2172 21H13.7828C14.9417 21 15.9051 20.155 16 19L17 7" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
+                            <path d="M10 11V17" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
+                            <path d="M14 11V17" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
                   ))}
                 </div>
               </section>
             ) : null}
-
-            <EmptyState />
           </div>
         </main>
       ) : (
@@ -964,22 +993,6 @@ function ValidationResultPanel({ result }: { result: ValidateOpenApiResult }): R
   )
 }
 
-function EmptyState(): React.JSX.Element {
-  return (
-    <div className="mt-10 flex flex-col items-center text-center gap-5 max-w-[460px] px-2">
-      <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center">
-        <WorkspaceIcon />
-      </div>
-      <div className="space-y-2">
-        <h2 className="text-xl font-bold tracking-tight">Load your workspace</h2>
-        <p className="text-sm text-slate-400 leading-relaxed">
-          {'{api:caramba}'} scans your folder for JSON files and loads those that are valid OpenAPI documents.
-        </p>
-      </div>
-    </div>
-  )
-}
-
 function ApiDropdownCard({
   api,
   isSelected,
@@ -1216,11 +1229,3 @@ function SidebarPlaceholder(): React.JSX.Element {
   )
 }
 
-function WorkspaceIcon(): React.JSX.Element {
-  return (
-    <svg width="32" height="32" viewBox="0 0 32 32" fill="none" aria-hidden="true" className="text-primary">
-      <path d="M4 8a4 4 0 014-4h16a4 4 0 014 4v16a4 4 0 01-4 4H8a4 4 0 01-4-4V8z" stroke="currentColor" strokeWidth="1.5" />
-      <path d="M10 16h12M16 10v12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-    </svg>
-  )
-}
