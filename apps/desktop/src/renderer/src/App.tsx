@@ -16,7 +16,6 @@ import type {
   SaveApiEditorResult,
   EnvironmentsConfig,
   Environment,
-  HttpMethod,
   EnvironmentParameter,
   ParameterLocation
 } from '@apicaramba/shared-types'
@@ -85,10 +84,6 @@ export default function App(): React.JSX.Element {
   const [showRenameFolderModal, setShowRenameFolderModal] = React.useState(false)
   const [renameFolderTargetId, setRenameFolderTargetId] = React.useState<string | null>(null)
   const [renameFolderValue, setRenameFolderValue] = React.useState('')
-  const [showCreateRequestModal, setShowCreateRequestModal] = React.useState(false)
-  const [newRequestMethod, setNewRequestMethod] = React.useState<HttpMethod>('GET')
-  const [newRequestPath, setNewRequestPath] = React.useState('')
-  const [newRequestError, setNewRequestError] = React.useState<string | null>(null)
   const [showCreateSchemaModal, setShowCreateSchemaModal] = React.useState(false)
   const [newSchemaName, setNewSchemaName] = React.useState('')
   const [newSchemaUsageTag, setNewSchemaUsageTag] = React.useState<SchemaUsageTag>('Both')
@@ -104,11 +99,11 @@ export default function App(): React.JSX.Element {
 
   const mergedOperations: OperationDetail[] = React.useMemo(() => {
     if (!editorState) return []
-    return editorState.operations.map((op) => editedOps[op.key] ?? op)
+    return editorState.operations.map((op) => editedOps[op.sourceKey ?? op.key] ?? op)
   }, [editorState, editedOps])
 
   const selectedOperation = React.useMemo(
-    () => mergedOperations.find((op) => op.key === selectedOpKey) ?? null,
+    () => mergedOperations.find((op) => (op.sourceKey ?? op.key) === selectedOpKey) ?? null,
     [mergedOperations, selectedOpKey]
   )
 
@@ -486,7 +481,7 @@ export default function App(): React.JSX.Element {
       })
       if (result.status === 'error') { setSaveStatus({ type: 'error', message: result.message }); return }
       setEditorState({ api, structure: result.structure, operations: result.operations, schemas: result.schemas })
-      setSelectedOpKey(result.operations[0]?.key ?? null)
+      setSelectedOpKey(result.operations[0]?.sourceKey ?? result.operations[0]?.key ?? null)
       setSelectedFolderId(null)
       setSelectedSchemaId(result.schemas[0]?.id ?? null)
       setSavedStructureHash(JSON.stringify(result.structure))
@@ -594,25 +589,27 @@ export default function App(): React.JSX.Element {
     if (selectedFolderId === folderId) setSelectedFolderId(null)
   }
 
-  function onConfirmCreateRequest(): void {
-    const path = newRequestPath.trim()
-    if (!path || !editorState) return
+  function onCreateDefaultRequest(): void {
+    if (!editorState) return
 
-    const normalizedPath = path.startsWith('/') ? path : `/${path}`
-    const key = `${newRequestMethod}:${normalizedPath}`
-
-    if (editorState.operations.some((op) => op.key === key)) {
-      setNewRequestError(`${newRequestMethod} ${normalizedPath} already exists in this API.`)
-      return
+    const existingKeys = new Set(editorState.operations.map((op) => `${op.method}:${op.path}`))
+    let candidatePath = '/new'
+    let suffix = 2
+    while (existingKeys.has(`GET:${candidatePath}`)) {
+      candidatePath = `/new${suffix}`
+      suffix += 1
     }
 
+    const key = `GET:${candidatePath}`
+
     const opId = `${editorState.structure.id}__op__${Date.now()}`
-    const newRef: OperationRef = { id: opId, operationId: null, method: newRequestMethod, path: normalizedPath }
+    const newRef: OperationRef = { id: opId, operationId: null, method: 'GET', path: candidatePath }
     const newDetail: OperationDetail = {
       key,
+      sourceKey: key,
       operationId: null,
-      method: newRequestMethod,
-      path: normalizedPath,
+      method: 'GET',
+      path: candidatePath,
       summary: '',
       description: '',
       tags: [],
@@ -642,10 +639,6 @@ export default function App(): React.JSX.Element {
     })
 
     setSelectedOpKey(key)
-    setShowCreateRequestModal(false)
-    setNewRequestMethod('GET')
-    setNewRequestPath('')
-    setNewRequestError(null)
   }
 
   function collectAndRemoveFolder(parent: FolderNode, folderId: string): FolderNode | null {
@@ -818,7 +811,8 @@ export default function App(): React.JSX.Element {
   }
 
   function onOperationChange(updated: OperationDetail): void {
-    setEditedOps((prev) => ({ ...prev, [updated.key]: updated }))
+    const sourceKey = updated.sourceKey ?? updated.key
+    setEditedOps((prev) => ({ ...prev, [sourceKey]: { ...updated, sourceKey } }))
     setSaveStatus('idle')
   }
 
@@ -834,7 +828,8 @@ export default function App(): React.JSX.Element {
         const sourceOperations = editorState?.operations ?? []
 
         for (const baseOperation of sourceOperations) {
-          const operation = current[baseOperation.key] ?? baseOperation
+          const editKey = baseOperation.sourceKey ?? baseOperation.key
+          const operation = current[editKey] ?? baseOperation
           if (
             operation.requestBodySchemaName !== previousName
             && !operation.responseSchemas.some((assignment) => assignment.schemaName === previousName)
@@ -842,7 +837,7 @@ export default function App(): React.JSX.Element {
             continue
           }
 
-          next[operation.key] = {
+          next[editKey] = {
             ...operation,
             requestBodySchemaName: operation.requestBodySchemaName === previousName
               ? updated.name
@@ -1000,13 +995,10 @@ export default function App(): React.JSX.Element {
                   }}
                   onNewRequest={() => {
                     setOpenApiMenuId(null)
-                    setNewRequestError(null)
-                    setNewRequestPath('')
-                    setNewRequestMethod('GET')
                     if (selectedApiId !== api.id) {
-                      void onSelectApi(api).then(() => setShowCreateRequestModal(true))
+                      void onSelectApi(api).then(() => onCreateDefaultRequest())
                     } else {
-                      setShowCreateRequestModal(true)
+                      onCreateDefaultRequest()
                     }
                   }}
                 />
@@ -1452,58 +1444,6 @@ export default function App(): React.JSX.Element {
                 onClick={() => { void onCreateWorkspace() }}
               >
                 {loading ? 'Creating...' : 'Create'}
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      {showCreateRequestModal ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-sm rounded-xl border border-surface-border bg-surface-base p-4 shadow-xl">
-            <h3 className="text-sm font-semibold text-slate-100">New Request</h3>
-            <p className="mt-1 text-xs text-slate-400">
-              Choose an HTTP method and path. The request will be added to{' '}
-              {selectedFolderId ? 'the selected folder' : 'Unsorted'} and you can edit it immediately.
-            </p>
-            <div className="mt-3 flex gap-2">
-              <select
-                value={newRequestMethod}
-                onChange={(e) => setNewRequestMethod(e.target.value as HttpMethod)}
-                className="rounded-lg border border-surface-border bg-surface-lower px-2 py-2 text-sm text-slate-100 outline-none focus:border-primary/60 shrink-0"
-              >
-                {(['GET','POST','PUT','PATCH','DELETE','HEAD','OPTIONS','TRACE'] as HttpMethod[]).map((m) => (
-                  <option key={m} value={m}>{m}</option>
-                ))}
-              </select>
-              <input
-                autoFocus
-                value={newRequestPath}
-                onChange={(e) => { setNewRequestPath(e.target.value); setNewRequestError(null) }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') onConfirmCreateRequest()
-                  if (e.key === 'Escape') setShowCreateRequestModal(false)
-                }}
-                placeholder="/resource/{id}"
-                className="flex-1 rounded-lg border border-surface-border bg-surface-lower px-3 py-2 text-sm text-slate-100 outline-none focus:border-primary/60 font-mono"
-              />
-            </div>
-            {newRequestError ? (
-              <p className="mt-2 text-xs text-red-400">{newRequestError}</p>
-            ) : null}
-            <div className="mt-3 flex justify-end gap-2">
-              <button
-                className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg border border-surface-border text-slate-400 hover:bg-surface-raised hover:text-slate-100 transition-colors"
-                onClick={() => setShowCreateRequestModal(false)}
-              >
-                Cancel
-              </button>
-              <button
-                className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg bg-primary text-white hover:bg-primary/80 disabled:opacity-40"
-                disabled={newRequestPath.trim().length === 0}
-                onClick={onConfirmCreateRequest}
-              >
-                Add Request
               </button>
             </div>
           </div>

@@ -1,5 +1,5 @@
 import React from 'react'
-import type { OperationDetail, EnvironmentParameter, SchemaDetail, ResponseSchemaAssignment } from '@apicaramba/shared-types'
+import type { OperationDetail, EnvironmentParameter, SchemaDetail, ResponseSchemaAssignment, HttpMethod } from '@apicaramba/shared-types'
 
 interface Props {
   operation: OperationDetail
@@ -20,9 +20,18 @@ const METHOD_COLOURS: Record<string, string> = {
   TRACE: 'text-slate-400'
 }
 
+const METHOD_OPTIONS: HttpMethod[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS', 'TRACE']
+
 export function OperationEditor({ operation, availableParameters, requestSchemas, responseSchemas, onChange }: Props): React.JSX.Element {
   function update(fields: Partial<OperationDetail>): void {
-    onChange({ ...operation, ...fields })
+    const nextMethod = fields.method ?? operation.method
+    const nextPath = fields.path ?? operation.path
+    onChange({
+      ...operation,
+      ...fields,
+      key: `${nextMethod}:${nextPath}`,
+      sourceKey: operation.sourceKey ?? operation.key
+    })
   }
 
   function toggleParameter(parameterId: string): void {
@@ -87,14 +96,31 @@ export function OperationEditor({ operation, availableParameters, requestSchemas
 
   return (
     <div className="flex flex-col gap-5">
-      {/* Read-only identity row */}
-      <div className="flex items-baseline gap-3 flex-wrap">
-        <span
-          className={`font-mono font-bold text-lg ${METHOD_COLOURS[operation.method] ?? 'text-slate-300'}`}
-        >
-          {operation.method}
-        </span>
-        <span className="font-mono text-base text-slate-200 break-all">{operation.path}</span>
+      {/* Editable identity row */}
+      <div className="flex flex-col gap-2">
+        <div className="grid grid-cols-1 md:grid-cols-[160px_1fr] gap-2 items-center">
+          <select
+            className={`w-full bg-surface-lower border border-surface-border rounded-lg px-3 py-2 text-sm font-mono ${METHOD_COLOURS[operation.method] ?? 'text-slate-300'} focus:outline-none focus:border-primary/60`}
+            value={operation.method}
+            onChange={(event) => update({ method: event.target.value as HttpMethod })}
+          >
+            {METHOD_OPTIONS.map((method) => (
+              <option key={method} value={method}>{method}</option>
+            ))}
+          </select>
+          <input
+            type="text"
+            className="w-full bg-surface-lower border border-surface-border rounded-lg px-3 py-2 text-sm font-mono text-slate-200 placeholder-slate-500 focus:outline-none focus:border-primary/60"
+            value={operation.path}
+            placeholder="/path"
+            onChange={(event) => {
+              const value = event.target.value
+              const normalized = value.trim() === '' ? '/' : value.startsWith('/') ? value : `/${value}`
+              update({ path: normalized })
+            }}
+            style={{ userSelect: 'text' }}
+          />
+        </div>
         {operation.operationId ? (
           <span className="font-mono text-xs text-slate-500">{operation.operationId}</span>
         ) : null}

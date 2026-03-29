@@ -10,6 +10,8 @@ import type { WorkspaceSnapshot } from './workspace.js'
 export interface OperationDetail {
   /** Stable composite key: "{METHOD}:{path}" — used as the edit key. */
   key: string
+  /** Original loaded key used to map edits back to the source operation when method/path are changed. */
+  sourceKey?: string
   operationId: string | null
   method: HttpMethod
   path: string

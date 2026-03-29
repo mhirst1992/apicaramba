@@ -89,7 +89,7 @@ export async function buildUpdatedDocument(
   if (!document) {
     throw new Error('Unsupported OpenAPI source. Expected OpenAPI 3.x or Swagger 2.0 in JSON or YAML.')
   }
-  const opsByKey = new Map(operations.map((op) => [`${op.method.toLowerCase()}:${op.path}`, op]))
+  const opsBySourceKey = new Map(operations.map((op) => [op.sourceKey ?? `${op.method}:${op.path}`, op]))
   const paramsById = new Map(availableParameters.map((parameter) => [parameter.id, parameter]))
   const schemasByName = new Map(schemas.map((schema) => [schema.name, schema]))
 
@@ -103,9 +103,16 @@ export async function buildUpdatedDocument(
       const operation = asObject(pathItem[method])
       if (!operation) continue
 
-      const key = `${method}:${pathKey}`
-      const edited = opsByKey.get(key)
+      const key = `${method.toUpperCase()}:${pathKey}`
+      const edited = opsBySourceKey.get(key)
       if (!edited) continue
+
+      const nextMethod = edited.method.toLowerCase()
+      const nextPath = edited.path
+      if (nextMethod !== method || nextPath !== pathKey) {
+        delete updatedPaths[pathKey][method]
+        continue
+      }
 
       updatedPaths[pathKey][method] = {
         ...operation,
@@ -201,6 +208,7 @@ function extractOperationDetails(document: OpenApiDocument): OperationDetail[] {
       const responseSchemas = extractResponseSchemas(operation)
       results.push({
         key: `${httpMethod}:${pathKey}`,
+        sourceKey: `${httpMethod}:${pathKey}`,
         operationId: typeof operation.operationId === 'string' ? operation.operationId : null,
         method: httpMethod,
         path: pathKey,
