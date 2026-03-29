@@ -3,9 +3,9 @@ import type {
   OperationDetail,
   Environment,
   EnvironmentParameter,
+  RequestCustomParameter,
   ExecuteRequestRequest,
   ExecuteRequestResult,
-  RequestHeader,
   SchemaDetail,
   SchemaPropertyDetail
 } from '@apicaramba/shared-types'
@@ -338,7 +338,7 @@ export function RequestRunner({ operation, environment, schemas, onExecute }: Pr
     [availableParameters, operation.parameterIds]
   )
 
-  const [headers, setHeaders] = React.useState<RequestHeader[]>([{ key: '', value: '' }])
+  const customParameters: RequestCustomParameter[] = operation.customParameters ?? []
   const [parameterValues, setParameterValues] = React.useState<Record<string, string>>({})
   const [body, setBody] = React.useState(() => buildInitialBody(operation, schemas))
   const [loading, setLoading] = React.useState(false)
@@ -360,7 +360,7 @@ export function RequestRunner({ operation, environment, schemas, onExecute }: Pr
     const queryValues: Record<string, string> = {}
     const headerValues: Record<string, string> = {}
     const cookieValues: Record<string, string> = {}
-    const missingRequired: EnvironmentParameter[] = []
+    const missingRequired: (EnvironmentParameter | RequestCustomParameter)[] = []
 
     for (const parameter of operationParameters) {
       const rawValue = parameterValues[parameter.id] ?? ''
@@ -379,25 +379,30 @@ export function RequestRunner({ operation, environment, schemas, onExecute }: Pr
       if (parameter.in === 'cookie') cookieValues[parameter.name] = value
     }
 
+    for (const parameter of customParameters) {
+      const rawValue = parameterValues[parameter.id] ?? ''
+      const value = substituteVars(rawValue, vars).trim()
+
+      if (!value && parameter.required) {
+        missingRequired.push(parameter)
+        continue
+      }
+
+      if (!value) continue
+
+      if (parameter.in === 'path') pathValues[parameter.name] = value
+      if (parameter.in === 'query') queryValues[parameter.name] = value
+      if (parameter.in === 'header') headerValues[parameter.name] = value
+      if (parameter.in === 'cookie') cookieValues[parameter.name] = value
+    }
+
     return { pathValues, queryValues, headerValues, cookieValues, missingRequired }
-  }, [operationParameters, parameterValues, vars])
+  }, [operationParameters, customParameters, parameterValues, vars])
 
   const resolvedUrl = React.useMemo(() => {
     const withPath = applyPathParameters(baseResolvedUrl, categorizedValues.pathValues)
     return applyQueryParameters(withPath, categorizedValues.queryValues)
   }, [baseResolvedUrl, categorizedValues.pathValues, categorizedValues.queryValues])
-
-  function addHeader(): void {
-    setHeaders((h) => [...h, { key: '', value: '' }])
-  }
-
-  function removeHeader(index: number): void {
-    setHeaders((h) => h.filter((_, i) => i !== index))
-  }
-
-  function updateHeader(index: number, field: 'key' | 'value', val: string): void {
-    setHeaders((h) => h.map((row, i) => (i === index ? { ...row, [field]: val } : row)))
-  }
 
   function updateParameterValue(parameterId: string, value: string): void {
     setParameterValues((current) => ({ ...current, [parameterId]: value }))
@@ -410,10 +415,7 @@ export function RequestRunner({ operation, environment, schemas, onExecute }: Pr
 
     setLoading(true)
     setResponse(null)
-    const allHeaders = headers.map((h) => ({
-      key: substituteVars(h.key, vars),
-      value: substituteVars(h.value, vars)
-    }))
+    const allHeaders: { key: string; value: string }[] = []
 
     for (const [headerName, value] of Object.entries(categorizedValues.headerValues)) {
       allHeaders.push({ key: headerName, value })
@@ -510,45 +512,28 @@ export function RequestRunner({ operation, environment, schemas, onExecute }: Pr
         </div>
       ) : null}
 
-      {/* Headers editor */}
-      <div>
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">Headers</span>
-          <button
-            className="text-xs text-primary hover:text-primary/80 transition-colors"
-            onClick={addHeader}
-          >
-            + Add
-          </button>
+      {customParameters.length > 0 ? (
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-medium text-accent uppercase tracking-wider">Request Parameters</span>
+            <span className="text-xs text-accent/60">Defined on this request</span>
+          </div>
+          <div className="rounded-lg border border-accent/30 bg-accent/5 p-2.5 flex flex-col gap-1.5">
+            {customParameters.map((parameter) => (
+              <label key={parameter.id} className="flex items-center gap-2 text-xs">
+                <span className="w-20 shrink-0 text-accent/70 font-mono">{parameter.in}</span>
+                <span className="w-40 shrink-0 text-slate-200 font-mono truncate">{parameter.name}</span>
+                <input
+                  className="flex-1 min-w-0 rounded border border-accent/30 bg-surface-base px-2 py-1 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-accent/50"
+                  placeholder={parameter.required ? 'Required' : 'Optional'}
+                  value={parameterValues[parameter.id] ?? ''}
+                  onChange={(event) => updateParameterValue(parameter.id, event.target.value)}
+                />
+              </label>
+            ))}
+          </div>
         </div>
-        <div className="flex flex-col gap-1.5">
-          {headers.map((row, idx) => (
-            <div key={idx} className="flex items-center gap-1.5">
-              <input
-                className="flex-1 min-w-0 rounded border border-surface-border bg-surface-lower px-2 py-1 text-xs font-mono text-slate-200 placeholder-slate-600 focus:outline-none focus:border-primary/50"
-                placeholder="Key"
-                value={row.key}
-                onChange={(e) => updateHeader(idx, 'key', e.target.value)}
-              />
-              <input
-                className="flex-1 min-w-0 rounded border border-surface-border bg-surface-lower px-2 py-1 text-xs font-mono text-slate-200 placeholder-slate-600 focus:outline-none focus:border-primary/50"
-                placeholder="Value"
-                value={row.value}
-                onChange={(e) => updateHeader(idx, 'value', e.target.value)}
-              />
-              <button
-                className="shrink-0 text-slate-600 hover:text-secondary transition-colors px-1"
-                onClick={() => removeHeader(idx)}
-                disabled={headers.length === 1}
-              >
-                <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="currentColor">
-                  <path d="M3 8h10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                </svg>
-              </button>
-            </div>
-          ))}
-        </div>
-      </div>
+      ) : null}
 
       {/* Body editor (only for POST/PUT/PATCH) */}
       {hasBody ? (
