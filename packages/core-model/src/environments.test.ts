@@ -7,9 +7,10 @@ import { loadEnvironmentsConfig, saveEnvironmentsConfig } from './environments.j
 describe('environments config', () => {
   it('returns a default single environment when file is missing', async () => {
     const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'apicaramba-env-default-'))
+    const openapiRelativePath = 'apis/demo/openapi.json'
 
     try {
-      const config = await loadEnvironmentsConfig(tempRoot)
+      const config = await loadEnvironmentsConfig(tempRoot, openapiRelativePath)
       expect(config.environments).toHaveLength(1)
       expect(config.activeEnvironmentId).toBe(config.environments[0]?.id)
       expect(config.environments[0]?.name).toBe('Default')
@@ -20,9 +21,10 @@ describe('environments config', () => {
 
   it('saves and reloads normalized single environment config', async () => {
     const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'apicaramba-env-save-'))
+    const openapiRelativePath = 'apis/demo/openapi.json'
 
     try {
-      const saved = await saveEnvironmentsConfig(tempRoot, {
+      const saved = await saveEnvironmentsConfig(tempRoot, openapiRelativePath, {
         version: '1.0.0',
         activeEnvironmentId: 'dev',
         environments: [
@@ -35,10 +37,10 @@ describe('environments config', () => {
       expect(saved.environments[0]?.id).toBe('dev')
       expect(saved.activeEnvironmentId).toBe('dev')
 
-      const reloaded = await loadEnvironmentsConfig(tempRoot)
+      const reloaded = await loadEnvironmentsConfig(tempRoot, openapiRelativePath)
       expect(reloaded).toEqual(saved)
 
-      const filePath = path.join(tempRoot, '.api-tool', 'environments.json')
+      const filePath = path.join(tempRoot, 'apis', 'demo', '.api-tool', 'environments.json')
       const raw = await readFile(filePath, 'utf8')
       expect(raw.endsWith('\n')).toBe(true)
     } finally {

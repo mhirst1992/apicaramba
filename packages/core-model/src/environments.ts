@@ -46,9 +46,13 @@ function normalizeConfig(input: EnvironmentsConfig): EnvironmentsConfig {
   }
 }
 
-export async function loadEnvironmentsConfig(workspaceRootPath: string): Promise<EnvironmentsConfig> {
+export async function loadEnvironmentsConfig(
+  workspaceRootPath: string,
+  openapiRelativePath: string
+): Promise<EnvironmentsConfig> {
   const absoluteRoot = path.resolve(workspaceRootPath)
-  const filePath = path.join(absoluteRoot, TOOL_DIR, ENVIRONMENTS_FILE)
+  const apiDir = path.dirname(path.resolve(absoluteRoot, openapiRelativePath))
+  const filePath = path.join(apiDir, TOOL_DIR, ENVIRONMENTS_FILE)
 
   try {
     const raw = await readFile(filePath, 'utf8')
@@ -66,10 +70,12 @@ export async function loadEnvironmentsConfig(workspaceRootPath: string): Promise
 
 export async function saveEnvironmentsConfig(
   workspaceRootPath: string,
+  openapiRelativePath: string,
   config: EnvironmentsConfig
 ): Promise<EnvironmentsConfig> {
   const absoluteRoot = path.resolve(workspaceRootPath)
-  const toolDirPath = path.join(absoluteRoot, TOOL_DIR)
+  const apiDir = path.dirname(path.resolve(absoluteRoot, openapiRelativePath))
+  const toolDirPath = path.join(apiDir, TOOL_DIR)
   const filePath = path.join(toolDirPath, ENVIRONMENTS_FILE)
   const normalized = normalizeConfig(config)
 

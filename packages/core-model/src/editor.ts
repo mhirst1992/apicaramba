@@ -40,7 +40,7 @@ export async function loadApiEditor(
       ? document.info.title
       : path.basename(path.dirname(absOpenapiPath))
 
-  const existingStructure = await tryLoadStructure(workspaceRoot, apiId, legacyApiId)
+  const existingStructure = await tryLoadStructure(workspaceRoot, openapiRelativePath, apiId, legacyApiId)
   const structure = existingStructure ?? buildUngroupedStructure(apiId, apiName, openapiRelativePath, operations)
 
   return { structure, operations }
@@ -112,32 +112,21 @@ export async function buildUpdatedDocument(
 }
 
 /**
- * Writes an updated structure.json (or creates it for the first time) in .api-tool/.
- * Merges with any existing structure file to preserve other APIs' entries.
+ * Writes an updated structure.json in the selected API's .api-tool/ directory.
  */
 export async function saveStructure(
   workspaceRoot: string,
-  structure: ApiStructure,
-  replaceIds: string[] = []
+  openapiRelativePath: string,
+  structure: ApiStructure
 ): Promise<void> {
-  const toolDir = path.join(workspaceRoot, API_TOOL_DIR)
+  const apiDir = path.dirname(path.resolve(workspaceRoot, openapiRelativePath))
+  const toolDir = path.join(apiDir, API_TOOL_DIR)
   await fs.mkdir(toolDir, { recursive: true })
 
   const structurePath = path.join(toolDir, STRUCTURE_FILE)
-  let existing: StructureConfig = { version: STRUCTURE_VERSION, apis: [] }
-
-  try {
-    const raw = await fs.readFile(structurePath, 'utf8')
-    existing = JSON.parse(raw) as StructureConfig
-  } catch {
-    // File doesn't exist yet — use fresh config
-  }
-
-  const replaceIdSet = new Set([structure.id, ...replaceIds])
-  const otherApis = existing.apis.filter((a) => !replaceIdSet.has(a.id))
   const updated: StructureConfig = {
     version: STRUCTURE_VERSION,
-    apis: [...otherApis, structure]
+    apis: [structure]
   }
 
   await fs.writeFile(structurePath, JSON.stringify(updated, null, 2) + '\n', 'utf8')
@@ -209,18 +198,57 @@ function buildUngroupedStructure(
 
 async function tryLoadStructure(
   workspaceRoot: string,
+  openapiRelativePath: string,
   apiId: string,
   legacyApiId: string
 ): Promise<ApiStructure | null> {
-  const structurePath = path.join(workspaceRoot, API_TOOL_DIR, STRUCTURE_FILE)
+  const apiDir = path.dirname(path.resolve(workspaceRoot, openapiRelativePath))
+  const apiStructurePath = path.join(apiDir, API_TOOL_DIR, STRUCTURE_FILE)
+  const workspaceStructurePath = path.join(workspaceRoot, API_TOOL_DIR, STRUCTURE_FILE)
+
+  const fromApiScope = await tryLoadStructureFromFile(apiStructurePath, apiId, legacyApiId)
+  if (fromApiScope) {
+    return fromApiScope
+  }
+
+  return tryLoadStructureFromFile(workspaceStructurePath, apiId, legacyApiId)
+}
+
+async function tryLoadStructureFromFile(
+  structurePath: string,
+  apiId: string,
+  legacyApiId: string
+): Promise<ApiStructure | null> {
+  const validIds = new Set([apiId, legacyApiId])
 
   try {
     const raw = await fs.readFile(structurePath, 'utf8')
-    const config = JSON.parse(raw) as StructureConfig
-    return config.apis.find((a) => a.id === apiId || a.id === legacyApiId) ?? null
+    const parsed = JSON.parse(raw) as unknown
+
+    if (isApiStructure(parsed)) {
+      return validIds.has(parsed.id) ? parsed : null
+    }
+
+    if (isStructureConfig(parsed)) {
+      return parsed.apis.find((a) => validIds.has(a.id)) ?? null
+    }
+
+    return null
   } catch {
     return null
   }
+}
+
+function isApiStructure(value: unknown): value is ApiStructure {
+  if (!value || typeof value !== 'object') return false
+  const candidate = value as Partial<ApiStructure>
+  return typeof candidate.id === 'string' && typeof candidate.name === 'string' && !!candidate.rootFolder
+}
+
+function isStructureConfig(value: unknown): value is StructureConfig {
+  if (!value || typeof value !== 'object') return false
+  const candidate = value as Partial<StructureConfig>
+  return Array.isArray(candidate.apis)
 }
 
 function toId(input: string): string {

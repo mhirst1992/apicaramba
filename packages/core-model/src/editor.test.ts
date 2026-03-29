@@ -240,8 +240,11 @@ describe('buildUpdatedDocument', () => {
 describe('saveStructure', () => {
   it('creates .api-tool/structure.json when it does not exist', async () => {
     const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'apicaramba-structure-test-'))
+    const openapiRelativePath = 'apis/test/openapi.json'
 
     try {
+      await mkdir(path.join(tempRoot, 'apis', 'test'), { recursive: true })
+
       const structure = {
         id: 'apis__test',
         name: 'Test API',
@@ -252,9 +255,9 @@ describe('saveStructure', () => {
         ]
       }
 
-      await saveStructure(tempRoot, structure)
+      await saveStructure(tempRoot, openapiRelativePath, structure)
 
-      const writtenRaw = await readFile(path.join(tempRoot, '.api-tool', 'structure.json'), 'utf8')
+      const writtenRaw = await readFile(path.join(tempRoot, 'apis', 'test', '.api-tool', 'structure.json'), 'utf8')
       const written = JSON.parse(writtenRaw) as { version: string; apis: { id: string }[] }
 
       expect(written.version).toBe('1')
@@ -267,15 +270,11 @@ describe('saveStructure', () => {
 
   it('merges with existing structure, preserving other API entries', async () => {
     const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'apicaramba-structure-test-'))
+    const openapiRelativePath = 'apis/payments/openapi.json'
 
     try {
-      const toolDir = path.join(tempRoot, '.api-tool')
+      const toolDir = path.join(tempRoot, 'apis', 'payments', '.api-tool')
       await mkdir(toolDir, { recursive: true })
-      await writeFile(
-        path.join(toolDir, 'structure.json'),
-        JSON.stringify({ version: '1', apis: [{ id: 'apis__other', name: 'Other API', path: 'apis/other', rootFolder: { id: 'f', name: 'root', children: [], operations: [] }, ungrouped: [] }] }),
-        'utf8'
-      )
 
       const newStructure = {
         id: 'apis__payments',
@@ -284,14 +283,13 @@ describe('saveStructure', () => {
         rootFolder: { id: 'apis__payments__root', name: 'root', children: [], operations: [] },
         ungrouped: []
       }
-      await saveStructure(tempRoot, newStructure)
+      await saveStructure(tempRoot, openapiRelativePath, newStructure)
 
       const writtenRaw = await readFile(path.join(toolDir, 'structure.json'), 'utf8')
       const written = JSON.parse(writtenRaw) as { apis: { id: string }[] }
 
-      expect(written.apis).toHaveLength(2)
+      expect(written.apis).toHaveLength(1)
       const ids = written.apis.map((a) => a.id)
-      expect(ids).toContain('apis__other')
       expect(ids).toContain('apis__payments')
     } finally {
       await rm(tempRoot, { recursive: true, force: true })
@@ -302,7 +300,7 @@ describe('saveStructure', () => {
     const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'apicaramba-structure-replace-test-'))
 
     try {
-      const toolDir = path.join(tempRoot, '.api-tool')
+      const toolDir = path.join(tempRoot, 'apis', 'demo', '.api-tool')
       await mkdir(toolDir, { recursive: true })
       await writeFile(
         path.join(toolDir, 'structure.json'),
@@ -318,7 +316,7 @@ describe('saveStructure', () => {
         ungrouped: []
       }
 
-      await saveStructure(tempRoot, migratedStructure, ['apis__demo__openapi.yaml'])
+      await saveStructure(tempRoot, 'apis/demo/openapi.json', migratedStructure)
 
       const writtenRaw = await readFile(path.join(toolDir, 'structure.json'), 'utf8')
       const written = JSON.parse(writtenRaw) as { apis: { id: string }[] }
