@@ -73,6 +73,29 @@ describe('loadWorkspaceSnapshot', () => {
 		}
 	})
 
+	it('loads APIs from YAML files when they contain OpenAPI documents', async () => {
+		const fixturePath = path.resolve(process.cwd(), '_example', 'openapi.yaml')
+		const fixtureYaml = await readFile(fixturePath, 'utf8')
+
+		const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'apicaramba-openapi-yaml-'))
+		const apiDir = path.join(tempRoot, 'apis', 'yaml-demo')
+		const openapiPath = path.join(apiDir, 'openapi.yaml')
+
+		try {
+			await mkdir(apiDir, { recursive: true })
+			await writeFile(openapiPath, fixtureYaml, 'utf8')
+
+			const snapshot = await loadWorkspaceSnapshot(tempRoot)
+			expect(snapshot.apis).toHaveLength(1)
+
+			const api = snapshot.apis[0]
+			expect(api?.openapiPath).toBe('apis/yaml-demo/openapi.yaml')
+			expect(api?.operationCount).toBeGreaterThan(0)
+		} finally {
+			await rm(tempRoot, { recursive: true, force: true })
+		}
+	})
+
 	it('ignores non-OpenAPI and malformed JSON files during discovery', async () => {
 		const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'apicaramba-openapi-ignore-json-'))
 		const apisDir = path.join(tempRoot, 'apis')

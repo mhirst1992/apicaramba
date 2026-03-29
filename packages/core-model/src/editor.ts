@@ -8,24 +8,13 @@ import type {
   StructureConfig,
   OperationDetail
 } from '@apicaramba/shared-types'
+import type { OpenApiDocument } from './openapi.js'
+import { parseAndNormalizeOpenApiSource } from './openapi.js'
 
 const API_TOOL_DIR = '.api-tool'
 const STRUCTURE_FILE = 'structure.json'
 const STRUCTURE_VERSION = '1'
 const OPENAPI_METHODS = ['get', 'post', 'put', 'patch', 'delete', 'head', 'options', 'trace'] as const
-
-interface OpenApiOperation {
-  operationId?: unknown
-  summary?: unknown
-  description?: unknown
-  tags?: unknown
-}
-
-interface OpenApiDocument {
-  openapi?: unknown
-  info?: { title?: unknown; version?: unknown }
-  paths?: Record<string, Record<string, OpenApiOperation> | undefined>
-}
 
 /**
  * Loads the full operation list and structural metadata for a single API,
@@ -38,7 +27,10 @@ export async function loadApiEditor(
 ): Promise<{ structure: ApiStructure; operations: OperationDetail[] }> {
   const absOpenapiPath = path.resolve(workspaceRoot, openapiRelativePath)
   const raw = await fs.readFile(absOpenapiPath, 'utf8')
-  const document = JSON.parse(raw) as OpenApiDocument
+  const document = await parseAndNormalizeOpenApiSource(raw)
+  if (!document) {
+    throw new Error('Unsupported OpenAPI source. Expected OpenAPI 3.x or Swagger 2.0 in JSON or YAML.')
+  }
 
   const operations = extractOperationDetails(document)
   const apiId = toId(openapiRelativePath)
@@ -58,11 +50,14 @@ export async function loadApiEditor(
  * Applies edited operation fields to the openapi.json document in memory
  * and returns the serialised JSON string ready for validation and write.
  */
-export function buildUpdatedDocument(
-  rawDocumentJson: string,
+export async function buildUpdatedDocument(
+  rawDocumentSource: string,
   operations: OperationDetail[]
-): string {
-  const document = JSON.parse(rawDocumentJson) as OpenApiDocument
+): Promise<string> {
+  const document = await parseAndNormalizeOpenApiSource(rawDocumentSource)
+  if (!document) {
+    throw new Error('Unsupported OpenAPI source. Expected OpenAPI 3.x or Swagger 2.0 in JSON or YAML.')
+  }
   const opsByKey = new Map(operations.map((op) => [`${op.method.toLowerCase()}:${op.path}`, op]))
 
   const updatedPaths: Record<string, Record<string, unknown>> = {}
@@ -122,7 +117,8 @@ export function buildUpdatedDocument(
  */
 export async function saveStructure(
   workspaceRoot: string,
-  structure: ApiStructure
+  structure: ApiStructure,
+  replaceIds: string[] = []
 ): Promise<void> {
   const toolDir = path.join(workspaceRoot, API_TOOL_DIR)
   await fs.mkdir(toolDir, { recursive: true })
@@ -137,7 +133,8 @@ export async function saveStructure(
     // File doesn't exist yet — use fresh config
   }
 
-  const otherApis = existing.apis.filter((a) => a.id !== structure.id)
+  const replaceIdSet = new Set([structure.id, ...replaceIds])
+  const otherApis = existing.apis.filter((a) => !replaceIdSet.has(a.id))
   const updated: StructureConfig = {
     version: STRUCTURE_VERSION,
     apis: [...otherApis, structure]

@@ -1,59 +1,21 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import type { HttpMethod, WorkspaceSnapshot, OperationSummary, ApiSummary } from '@apicaramba/shared-types'
-import swagger2openapi from 'swagger2openapi'
+import type { OpenApiDocument } from './openapi.js'
+import { parseAndNormalizeOpenApiSource } from './openapi.js'
 
 export { loadApiEditor, buildUpdatedDocument, saveStructure } from './editor.js'
 
-const JSON_FILE_EXTENSION = '.json'
+const OPENAPI_FILE_EXTENSIONS = new Set(['.json', '.yaml', '.yml'])
 const OPENAPI_METHODS = ['get', 'post', 'put', 'patch', 'delete', 'head', 'options', 'trace'] as const
 const IGNORED_DIRECTORIES = new Set(['.git', 'node_modules', '.api-tool'])
 
-interface OpenApiInfo {
-	title?: unknown
-	version?: unknown
-}
-
-interface OpenApiOperation {
-	operationId?: unknown
-	summary?: unknown
-}
-
-interface OpenApiDocument {
-	openapi?: unknown
-	swagger?: unknown
-	definitions?: unknown
-	securityDefinitions?: unknown
-	schemes?: unknown
-	consumes?: unknown
-	produces?: unknown
-	info?: OpenApiInfo
-	paths?: Record<string, Record<string, OpenApiOperation> | undefined>
-}
-
-interface SwaggerConversionResult {
-	openapi: unknown
-}
-
-interface Swagger2OpenApiConverter {
-	convertObj: (
-		source: unknown,
-		options: {
-			patch?: boolean
-			warnOnly?: boolean
-			resolve?: boolean
-		}
-	) => Promise<SwaggerConversionResult>
-}
-
-const swaggerConverter = swagger2openapi as unknown as Swagger2OpenApiConverter
-
 export async function loadWorkspaceSnapshot(rootPath: string): Promise<WorkspaceSnapshot> {
 	const absoluteRoot = path.resolve(rootPath)
-	const jsonFiles = await findJsonFiles(absoluteRoot)
+	const openApiFiles = await findOpenApiFiles(absoluteRoot)
 
 	const summaries = await Promise.all(
-		jsonFiles.map(async (candidatePath) => buildApiSummary(absoluteRoot, candidatePath))
+		openApiFiles.map(async (candidatePath) => buildApiSummary(absoluteRoot, candidatePath))
 	)
 
 	const apis = summaries.filter((summary): summary is ApiSummary => summary !== null)
@@ -70,7 +32,7 @@ export async function loadWorkspaceSnapshot(rootPath: string): Promise<Workspace
 	}
 }
 
-async function findJsonFiles(rootPath: string): Promise<string[]> {
+async function findOpenApiFiles(rootPath: string): Promise<string[]> {
 	const results: string[] = []
 
 	async function walk(currentPath: string): Promise<void> {
@@ -86,7 +48,8 @@ async function findJsonFiles(rootPath: string): Promise<string[]> {
 				continue
 			}
 
-			if (entry.isFile() && entry.name.toLowerCase().endsWith(JSON_FILE_EXTENSION)) {
+			const extension = path.extname(entry.name).toLowerCase()
+			if (entry.isFile() && OPENAPI_FILE_EXTENSIONS.has(extension)) {
 				results.push(path.join(currentPath, entry.name))
 			}
 		}
@@ -101,15 +64,16 @@ async function buildApiSummary(workspaceRoot: string, candidateAbsolutePath: str
 
 	try {
 		const raw = await fs.readFile(candidateAbsolutePath, 'utf8')
-		parsedDocument = JSON.parse(raw) as OpenApiDocument
+		const document = await parseAndNormalizeOpenApiSource(raw)
+		if (!document) {
+			return null
+		}
+		parsedDocument = document
 	} catch {
 		return null
 	}
 
-	const document = await normalizeToOpenApi3(parsedDocument)
-	if (!document) {
-		return null
-	}
+	const document = parsedDocument
 
 	const openapiVersion = typeof document.openapi === 'string' ? document.openapi : ''
 	if (!openapiVersion.startsWith('3.')) {
@@ -134,38 +98,6 @@ async function buildApiSummary(workspaceRoot: string, candidateAbsolutePath: str
 		version: typeof document.info?.version === 'string' ? document.info.version : null,
 		operationCount: operations.length,
 		operations
-	}
-}
-
-async function normalizeToOpenApi3(
-	document: OpenApiDocument
-): Promise<OpenApiDocument | null> {
-	const openapiVersion = typeof document.openapi === 'string' ? document.openapi : ''
-	if (openapiVersion.startsWith('3.')) {
-		return document
-	}
-
-	const swaggerVersion = typeof document.swagger === 'string' ? document.swagger : ''
-	if (swaggerVersion.length === 0) {
-		return null
-	}
-
-	const sourceForConversion = coerceSwaggerVersionForConversion(document)
-
-	try {
-		const converted = await swaggerConverter.convertObj(sourceForConversion, {
-			patch: true,
-			warnOnly: true,
-			resolve: false
-		})
-
-		if (!isObject(converted.openapi)) {
-			return null
-		}
-
-		return converted.openapi as OpenApiDocument
-	} catch {
-		return null
 	}
 }
 
@@ -218,33 +150,6 @@ function normalizeRelativePath(value: string): string {
 function toId(input: string): string {
 	const normalized = input.replaceAll('\\', '/').toLowerCase()
 	return normalized.replace(/[^a-z0-9/._-]+/g, '-').replaceAll('/', '__')
-}
-
-function isObject(value: unknown): value is Record<string, unknown> {
-	return typeof value === 'object' && value !== null
-}
-
-function coerceSwaggerVersionForConversion(document: OpenApiDocument): OpenApiDocument {
-	const swaggerVersion = typeof document.swagger === 'string' ? document.swagger : ''
-	if (!swaggerVersion.startsWith('3.')) {
-		return document
-	}
-
-	const looksLikeSwagger2 =
-		document.definitions !== undefined ||
-		document.securityDefinitions !== undefined ||
-		document.schemes !== undefined ||
-		document.consumes !== undefined ||
-		document.produces !== undefined
-
-	if (!looksLikeSwagger2) {
-		return document
-	}
-
-	return {
-		...document,
-		swagger: '2.0'
-	}
 }
 
 export { loadEnvironmentsConfig, saveEnvironmentsConfig } from './environments.js'
