@@ -5,24 +5,42 @@ import type {
   RecentWorkspace,
   ValidateOpenApiResult,
   ApiStructure,
-  FolderNode,
   OperationRef,
   OperationDetail,
-  HttpMethod,
   SchemaDetail,
   SchemaUsageTag,
   SchemaPropertyDetail,
-  SchemaPrimitiveType,
-  SchemaPropertyType,
   SaveApiEditorResult,
   EnvironmentsConfig,
   Environment,
-  EnvironmentParameter,
-  ParameterLocation
+  EnvironmentParameter
 } from '@apicaramba/shared-types'
 import { EndpointTree } from './components/EndpointTree.js'
 import { OperationEditor } from './components/OperationEditor.js'
 import { RequestRunner } from './components/RequestRunner.js'
+import { TitleBar } from './components/TitleBar.js'
+import { ApiDropdownCard } from './components/ApiDropdownCard.js'
+import { EnvironmentModal } from './components/EnvironmentModal.js'
+import { SchemaEditor } from './components/SchemaEditor.js'
+import { EditorSkeleton, SidebarPlaceholder } from './components/AppPlaceholders.js'
+import { SaveButton, SaveFeedback, ValidationResultPanel, type SaveStatus } from './components/AppFeedback.js'
+import {
+  CreateFolderModal,
+  CreateSchemaModal,
+  RenameFolderModal,
+  CreateWorkspaceModal,
+  CreateApiModal
+} from './components/AppModals.js'
+import { createSchemaId, createSchemaName } from './utils/schemaUtils.js'
+import { createParameterId } from './utils/parameterUtils.js'
+import {
+  findFolderById,
+  collectAllFolderOps,
+  collectAndRemoveFolder,
+  isFolderAncestorOrSelf,
+  collectAndRemoveOperation,
+  syncOperationRefInStructure
+} from './utils/structureUtils.js'
 
 // --- Types -------------------------------------------------------------------
 
@@ -34,13 +52,6 @@ interface EditorState {
 }
 
 const SCHEMAS_FOLDER_ID = '__schemas__'
-
-type SaveStatus =
-  | 'idle'
-  | 'saving'
-  | 'saved'
-  | { type: 'validation-failed'; issues: { message: string; path: string | null }[] }
-  | { type: 'error'; message: string }
 
 // --- Root component -----------------------------------------------------------
 
@@ -513,21 +524,6 @@ export default function App(): React.JSX.Element {
     }
   }
 
-  function findFolderById(folder: FolderNode, folderId: string): FolderNode | null {
-    if (folder.id === folderId) {
-      return folder
-    }
-
-    for (const child of folder.children) {
-      const match = findFolderById(child, folderId)
-      if (match) {
-        return match
-      }
-    }
-
-    return null
-  }
-
   function operationsForSelectedFolder(structure: ApiStructure): OperationRef[] {
     if (selectedFolderId === null) {
       return structure.ungrouped
@@ -545,57 +541,6 @@ export default function App(): React.JSX.Element {
       mutator(nextStructure)
       return { ...current, structure: nextStructure }
     })
-  }
-
-  function parseOperationKey(operationKey: string): { method: HttpMethod; path: string } | null {
-    const separatorIndex = operationKey.indexOf(':')
-    if (separatorIndex <= 0) {
-      return null
-    }
-
-    return {
-      method: operationKey.slice(0, separatorIndex) as HttpMethod,
-      path: operationKey.slice(separatorIndex + 1)
-    }
-  }
-
-  function syncOperationRefInFolder(
-    folder: FolderNode,
-    fromMethod: HttpMethod,
-    fromPath: string,
-    toMethod: HttpMethod,
-    toPath: string
-  ): boolean {
-    const operation = folder.operations.find((ref) => ref.method === fromMethod && ref.path === fromPath)
-    if (operation) {
-      operation.method = toMethod
-      operation.path = toPath
-      return true
-    }
-
-    for (const child of folder.children) {
-      if (syncOperationRefInFolder(child, fromMethod, fromPath, toMethod, toPath)) {
-        return true
-      }
-    }
-
-    return false
-  }
-
-  function syncOperationRefInStructure(draft: ApiStructure, sourceKey: string, toMethod: HttpMethod, toPath: string): void {
-    const source = parseOperationKey(sourceKey)
-    if (!source) {
-      return
-    }
-
-    const inUngrouped = draft.ungrouped.find((ref) => ref.method === source.method && ref.path === source.path)
-    if (inUngrouped) {
-      inUngrouped.method = toMethod
-      inUngrouped.path = toPath
-      return
-    }
-
-    syncOperationRefInFolder(draft.rootFolder, source.method, source.path, toMethod, toPath)
   }
 
   function onCreateFolder(): void {
@@ -643,10 +588,6 @@ export default function App(): React.JSX.Element {
     setShowRenameFolderModal(false)
     setRenameFolderTargetId(null)
     setRenameFolderValue('')
-  }
-
-  function collectAllFolderOps(folder: FolderNode): OperationRef[] {
-    return [...folder.operations, ...folder.children.flatMap(collectAllFolderOps)]
   }
 
   function onDeleteFolder(folderId: string): void {
@@ -715,24 +656,6 @@ export default function App(): React.JSX.Element {
     setSelectedOpKey(key)
   }
 
-  function collectAndRemoveFolder(parent: FolderNode, folderId: string): FolderNode | null {
-    const idx = parent.children.findIndex((c) => c.id === folderId)
-    if (idx >= 0) {
-      const [removed] = parent.children.splice(idx, 1)
-      return removed ?? null
-    }
-    for (const child of parent.children) {
-      const removed = collectAndRemoveFolder(child, folderId)
-      if (removed) return removed
-    }
-    return null
-  }
-
-  function isFolderAncestorOrSelf(folder: FolderNode, candidateId: string): boolean {
-    if (folder.id === candidateId) return true
-    return folder.children.some((c) => isFolderAncestorOrSelf(c, candidateId))
-  }
-
   function onDropFolder(folderId: string, targetParentId: string | null): void {
     if (!editorState) return
 
@@ -761,23 +684,6 @@ export default function App(): React.JSX.Element {
       target.children.push(removed)
     })
     setDraggingFolderId(null)
-  }
-
-  function collectAndRemoveOperation(folder: FolderNode, operationId: string): OperationRef | null {
-    const opIndex = folder.operations.findIndex((op) => op.id === operationId)
-    if (opIndex >= 0) {
-      const [removed] = folder.operations.splice(opIndex, 1)
-      return removed ?? null
-    }
-
-    for (const child of folder.children) {
-      const removed = collectAndRemoveOperation(child, operationId)
-      if (removed) {
-        return removed
-      }
-    }
-
-    return null
   }
 
   function onDropOperation(operationId: string, folderId: string | null): void {
@@ -1307,97 +1213,23 @@ export default function App(): React.JSX.Element {
       )}
       </div>
 
-      {showCreateFolderModal ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-sm rounded-xl border border-surface-border bg-surface-base p-4 shadow-xl">
-            <h3 className="text-sm font-semibold text-slate-100">Create Folder</h3>
-            <p className="mt-1 text-xs text-slate-400">Choose a name for the new folder.</p>
-            <input
-              autoFocus
-              value={newFolderName}
-              onChange={(event) => setNewFolderName(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  onConfirmCreateFolder()
-                }
-                if (event.key === 'Escape') {
-                  setShowCreateFolderModal(false)
-                }
-              }}
-              placeholder="New folder"
-              className="mt-3 w-full rounded-lg border border-surface-border bg-surface-lower px-3 py-2 text-sm text-slate-100 outline-none focus:border-primary/60"
-            />
-            <div className="mt-3 flex justify-end gap-2">
-              <button
-                className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg border border-surface-border text-slate-400 hover:bg-surface-raised hover:text-slate-100 transition-colors"
-                onClick={() => setShowCreateFolderModal(false)}
-              >
-                Cancel
-              </button>
-              <button
-                className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg bg-primary text-white hover:bg-primary/80 disabled:opacity-40"
-                disabled={newFolderName.trim().length === 0}
-                onClick={onConfirmCreateFolder}
-              >
-                Create
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <CreateFolderModal
+        open={showCreateFolderModal}
+        value={newFolderName}
+        onChange={setNewFolderName}
+        onConfirm={onConfirmCreateFolder}
+        onCancel={() => setShowCreateFolderModal(false)}
+      />
 
-      {showCreateSchemaModal ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-sm rounded-xl border border-surface-border bg-surface-base p-4 shadow-xl">
-            <h3 className="text-sm font-semibold text-slate-100">Create Schema</h3>
-            <p className="mt-1 text-xs text-slate-400">Choose a schema name and usage tag.</p>
-            <label className="mt-3 flex flex-col gap-1">
-              <span className="text-xs text-slate-400">Schema Name</span>
-              <input
-                autoFocus
-                value={newSchemaName}
-                onChange={(event) => setNewSchemaName(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') {
-                    onConfirmCreateSchema()
-                  }
-                  if (event.key === 'Escape') {
-                    setShowCreateSchemaModal(false)
-                  }
-                }}
-                placeholder="NewSchema"
-                className="w-full rounded-lg border border-surface-border bg-surface-lower px-3 py-2 text-sm text-slate-100 outline-none focus:border-primary/60"
-              />
-            </label>
-            <label className="mt-3 flex flex-col gap-1">
-              <span className="text-xs text-slate-400">Usage Tag</span>
-              <select
-                value={newSchemaUsageTag}
-                onChange={(event) => setNewSchemaUsageTag(event.target.value as SchemaUsageTag)}
-                className="w-full rounded-lg border border-surface-border bg-surface-lower px-3 py-2 text-sm text-slate-100 outline-none focus:border-primary/60"
-              >
-                <option value="Rqst">Request</option>
-                <option value="Resp">Response</option>
-                <option value="Both">Both</option>
-              </select>
-            </label>
-            <div className="mt-3 flex justify-end gap-2">
-              <button
-                className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg border border-surface-border text-slate-400 hover:bg-surface-raised hover:text-slate-100 transition-colors"
-                onClick={() => setShowCreateSchemaModal(false)}
-              >
-                Cancel
-              </button>
-              <button
-                className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg bg-primary text-white hover:bg-primary/80"
-                onClick={onConfirmCreateSchema}
-              >
-                Create
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <CreateSchemaModal
+        open={showCreateSchemaModal}
+        name={newSchemaName}
+        usageTag={newSchemaUsageTag}
+        onChangeName={setNewSchemaName}
+        onChangeUsageTag={setNewSchemaUsageTag}
+        onConfirm={onConfirmCreateSchema}
+        onCancel={() => setShowCreateSchemaModal(false)}
+      />
 
       {showEnvironmentPanel ? (
         <EnvironmentModal
@@ -1417,856 +1249,43 @@ export default function App(): React.JSX.Element {
         />
       ) : null}
 
-      {showRenameFolderModal ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-sm rounded-xl border border-surface-border bg-surface-base p-4 shadow-xl">
-            <h3 className="text-sm font-semibold text-slate-100">Rename Folder</h3>
-            <p className="mt-1 text-xs text-slate-400">Enter a new name for this folder.</p>
-            <input
-              autoFocus
-              value={renameFolderValue}
-              onChange={(event) => setRenameFolderValue(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') onConfirmRenameFolder()
-                if (event.key === 'Escape') {
-                  setShowRenameFolderModal(false)
-                  setRenameFolderTargetId(null)
-                }
-              }}
-              placeholder="Folder name"
-              className="mt-3 w-full rounded-lg border border-surface-border bg-surface-lower px-3 py-2 text-sm text-slate-100 outline-none focus:border-primary/60"
-            />
-            <div className="mt-3 flex justify-end gap-2">
-              <button
-                className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg border border-surface-border text-slate-400 hover:bg-surface-raised hover:text-slate-100 transition-colors"
-                onClick={() => { setShowRenameFolderModal(false); setRenameFolderTargetId(null) }}
-              >
-                Cancel
-              </button>
-              <button
-                className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg bg-primary text-white hover:bg-primary/80 disabled:opacity-40"
-                disabled={renameFolderValue.trim().length === 0}
-                onClick={onConfirmRenameFolder}
-              >
-                Rename
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <RenameFolderModal
+        open={showRenameFolderModal}
+        value={renameFolderValue}
+        onChange={setRenameFolderValue}
+        onConfirm={onConfirmRenameFolder}
+        onCancel={() => {
+          setShowRenameFolderModal(false)
+          setRenameFolderTargetId(null)
+        }}
+      />
 
-      {showCreateWorkspaceModal ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-sm rounded-xl border border-surface-border bg-surface-base p-4 shadow-xl">
-            <h3 className="text-sm font-semibold text-slate-100">Create New Workspace</h3>
-            <p className="mt-1 text-xs text-slate-400">
-              Enter a workspace name and the first API to create. The workspace folder will be the repo root.
-            </p>
-            <input
-              autoFocus
-              value={newWorkspaceName}
-              onChange={(event) => setNewWorkspaceName(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  void onCreateWorkspace()
-                }
-                if (event.key === 'Escape') {
-                  setShowCreateWorkspaceModal(false)
-                }
-              }}
-              placeholder="My API Workspace"
-              className="mt-3 w-full rounded-lg border border-surface-border bg-surface-lower px-3 py-2 text-sm text-slate-100 outline-none focus:border-primary/60"
-            />
-            <input
-              value={newWorkspaceFirstApiName}
-              onChange={(event) => setNewWorkspaceFirstApiName(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  void onCreateWorkspace()
-                }
-                if (event.key === 'Escape') {
-                  setShowCreateWorkspaceModal(false)
-                }
-              }}
-              placeholder="Payments API"
-              className="mt-3 w-full rounded-lg border border-surface-border bg-surface-lower px-3 py-2 text-sm text-slate-100 outline-none focus:border-primary/60"
-            />
-            <div className="mt-3 flex justify-end gap-2">
-              <button
-                className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg border border-surface-border text-slate-400 hover:bg-surface-raised hover:text-slate-100 transition-colors"
-                onClick={() => {
-                  setShowCreateWorkspaceModal(false)
-                  setNewWorkspaceName('')
-                  setNewWorkspaceFirstApiName('')
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg bg-primary text-white hover:bg-primary/80 disabled:opacity-40"
-                disabled={newWorkspaceName.trim().length === 0 || newWorkspaceFirstApiName.trim().length === 0 || loading}
-                onClick={() => { void onCreateWorkspace() }}
-              >
-                {loading ? 'Creating...' : 'Create'}
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <CreateWorkspaceModal
+        open={showCreateWorkspaceModal}
+        workspaceName={newWorkspaceName}
+        firstApiName={newWorkspaceFirstApiName}
+        loading={loading}
+        onChangeWorkspaceName={setNewWorkspaceName}
+        onChangeFirstApiName={setNewWorkspaceFirstApiName}
+        onConfirm={() => { void onCreateWorkspace() }}
+        onCancel={() => {
+          setShowCreateWorkspaceModal(false)
+          setNewWorkspaceName('')
+          setNewWorkspaceFirstApiName('')
+        }}
+      />
 
-      {showCreateApiModal ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-sm rounded-xl border border-surface-border bg-surface-base p-4 shadow-xl">
-            <h3 className="text-sm font-semibold text-slate-100">Create New API</h3>
-            <p className="mt-1 text-xs text-slate-400">
-              Enter an API name. It will be created in its own folder at the workspace root.
-            </p>
-            <input
-              autoFocus
-              value={newApiName}
-              onChange={(event) => setNewApiName(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  void onCreateApi()
-                }
-                if (event.key === 'Escape') {
-                  setShowCreateApiModal(false)
-                }
-              }}
-              placeholder="Payments API"
-              className="mt-3 w-full rounded-lg border border-surface-border bg-surface-lower px-3 py-2 text-sm text-slate-100 outline-none focus:border-primary/60"
-            />
-            <div className="mt-3 flex justify-end gap-2">
-              <button
-                className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg border border-surface-border text-slate-400 hover:bg-surface-raised hover:text-slate-100 transition-colors"
-                onClick={() => {
-                  setShowCreateApiModal(false)
-                  setNewApiName('')
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg bg-primary text-white hover:bg-primary/80 disabled:opacity-40"
-                disabled={newApiName.trim().length === 0 || loading}
-                onClick={() => { void onCreateApi() }}
-              >
-                {loading ? 'Creating...' : 'Create'}
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <CreateApiModal
+        open={showCreateApiModal}
+        value={newApiName}
+        loading={loading}
+        onChange={setNewApiName}
+        onConfirm={() => { void onCreateApi() }}
+        onCancel={() => {
+          setShowCreateApiModal(false)
+          setNewApiName('')
+        }}
+      />
     </div>
   )
-}
-
-interface EnvironmentModalProps {
-  environment: Environment | null
-  loading: boolean
-  saving: boolean
-  dirty: boolean
-  error: string | null
-  message: string | null
-  onClose: () => void
-  onChangeName: (value: string) => void
-  onChangeBaseUrl: (value: string) => void
-  onSave: () => void
-  onAddParameter: () => void
-  onUpdateParameter: (parameterId: string, patch: Partial<EnvironmentParameter>) => void
-  onRemoveParameter: (parameterId: string) => void
-}
-
-function EnvironmentModal(props: EnvironmentModalProps): React.JSX.Element {
-  const parameters = props.environment?.parameters ?? []
-
-  return (
-    <div className="fixed inset-0 z-50 bg-black/65 p-4 md:p-6">
-      <div className="h-full w-full rounded-xl border border-surface-border bg-surface-base shadow-2xl flex flex-col">
-        <div className="flex items-start justify-between gap-3 border-b border-surface-border px-5 py-4">
-          <div>
-            <h3 className="text-base font-semibold text-slate-100">Environment Settings</h3>
-            <p className="text-xs text-slate-400 mt-0.5">Stored in .api-tool/environments.json for the selected API</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg border border-surface-border text-slate-300 hover:bg-surface-raised hover:text-slate-100 disabled:opacity-40 transition-colors"
-              disabled={props.loading || props.saving || !props.environment || !props.dirty}
-              onClick={props.onSave}
-            >
-              {props.saving ? 'Saving...' : 'Save Environment'}
-            </button>
-            <button
-              className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg border border-surface-border text-slate-400 hover:bg-surface-raised hover:text-slate-100 transition-colors"
-              onClick={props.onClose}
-            >
-              Close
-            </button>
-          </div>
-        </div>
-
-        <div className="flex-1 overflow-y-auto px-5 py-4">
-          {props.error ? (
-            <div className="mb-4 rounded-lg border border-secondary/60 bg-secondary/10 px-3 py-2 text-xs text-slate-300">
-              {props.error}
-            </div>
-          ) : null}
-
-          {props.message ? (
-            <div className="mb-4 rounded-lg border border-primary/50 bg-primary/10 px-3 py-2 text-xs text-slate-200">
-              {props.message}
-            </div>
-          ) : null}
-
-          {props.loading ? (
-            <p className="text-xs text-slate-400">Loading environment...</p>
-          ) : props.environment ? (
-            <div className="space-y-5">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                <label className="flex flex-col gap-1">
-                  <span className="text-xs text-slate-400">Environment Name</span>
-                  <input
-                    value={props.environment.name}
-                    onChange={(event) => props.onChangeName(event.target.value)}
-                    className="rounded-lg border border-surface-border bg-surface-lower px-3 py-2 text-sm text-slate-100 outline-none focus:border-primary/60"
-                    placeholder="Default"
-                  />
-                </label>
-                <label className="flex flex-col gap-1">
-                  <span className="text-xs text-slate-400">Base URL</span>
-                  <input
-                    value={props.environment.baseUrl}
-                    onChange={(event) => props.onChangeBaseUrl(event.target.value)}
-                    className="rounded-lg border border-surface-border bg-surface-lower px-3 py-2 text-sm text-slate-100 outline-none focus:border-primary/60"
-                    placeholder="https://api.example.com"
-                  />
-                </label>
-              </div>
-
-              <div className="rounded-xl border border-surface-border bg-surface-lower/60">
-                <div className="flex items-center justify-between px-3 py-2 border-b border-surface-border">
-                  <div>
-                    <h4 className="text-xs font-semibold text-slate-200 uppercase tracking-wider">Reusable Parameters</h4>
-                    <p className="text-xs text-slate-500 mt-0.5">Define query/header/path/cookie parameters for this API.</p>
-                  </div>
-                  <button
-                    className="inline-flex items-center px-3 py-1 text-xs font-medium rounded-md border border-surface-border text-slate-300 hover:bg-surface-raised"
-                    onClick={props.onAddParameter}
-                  >
-                    + Add Parameter
-                  </button>
-                </div>
-
-                {parameters.length === 0 ? (
-                  <p className="px-3 py-3 text-xs text-slate-500">No parameters defined yet.</p>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full text-xs">
-                      <thead>
-                        <tr className="text-left text-slate-500 border-b border-surface-border">
-                          <th className="px-3 py-2 font-medium">Name</th>
-                          <th className="px-3 py-2 font-medium">Location</th>
-                          <th className="px-3 py-2 font-medium">Required</th>
-                          <th className="px-3 py-2 font-medium">Description</th>
-                          <th className="px-3 py-2 font-medium w-16" />
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {parameters.map((parameter) => (
-                          <tr key={parameter.id} className="border-b border-surface-border/70 align-top">
-                            <td className="px-3 py-2">
-                              <input
-                                className="w-full rounded border border-surface-border bg-surface-base px-2 py-1 text-xs text-slate-100 outline-none focus:border-primary/60 font-mono"
-                                value={parameter.name}
-                                onChange={(event) => {
-                                  const name = event.target.value
-                                  const nextId = createParameterId(
-                                    parameter.in,
-                                    name,
-                                    parameters.filter((item) => item.id !== parameter.id)
-                                  )
-                                  props.onUpdateParameter(parameter.id, { id: nextId, name })
-                                }}
-                                placeholder="userId"
-                              />
-                            </td>
-                            <td className="px-3 py-2">
-                              <select
-                                className="w-full rounded border border-surface-border bg-surface-base px-2 py-1 text-xs text-slate-100 outline-none focus:border-primary/60"
-                                value={parameter.in}
-                                onChange={(event) => {
-                                  const nextIn = event.target.value as ParameterLocation
-                                  const nextId = createParameterId(
-                                    nextIn,
-                                    parameter.name,
-                                    parameters.filter((item) => item.id !== parameter.id)
-                                  )
-                                  props.onUpdateParameter(parameter.id, {
-                                    id: nextId,
-                                    in: nextIn,
-                                    required: nextIn === 'path' ? true : parameter.required
-                                  })
-                                }}
-                              >
-                                <option value="query">query</option>
-                                <option value="header">header</option>
-                                <option value="path">path</option>
-                                <option value="cookie">cookie</option>
-                              </select>
-                            </td>
-                            <td className="px-3 py-2">
-                              <label className="inline-flex items-center gap-1.5 text-slate-300">
-                                <input
-                                  type="checkbox"
-                                  checked={parameter.in === 'path' ? true : parameter.required}
-                                  disabled={parameter.in === 'path'}
-                                  onChange={(event) => props.onUpdateParameter(parameter.id, { required: event.target.checked })}
-                                />
-                                <span>{parameter.in === 'path' ? 'Always' : 'Yes'}</span>
-                              </label>
-                            </td>
-                            <td className="px-3 py-2">
-                              <input
-                                className="w-full rounded border border-surface-border bg-surface-base px-2 py-1 text-xs text-slate-100 outline-none focus:border-primary/60"
-                                value={parameter.description ?? ''}
-                                onChange={(event) => props.onUpdateParameter(parameter.id, { description: event.target.value })}
-                                placeholder="Optional notes"
-                              />
-                            </td>
-                            <td className="px-3 py-2 text-right">
-                              <button
-                                className="text-slate-500 hover:text-red-300"
-                                onClick={() => props.onRemoveParameter(parameter.id)}
-                                aria-label={`Delete ${parameter.name}`}
-                              >
-                                Delete
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-            </div>
-          ) : (
-            <p className="text-xs text-slate-400">Environment profile unavailable.</p>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function createParameterId(inValue: ParameterLocation, name: string, existing: EnvironmentParameter[]): string {
-  const baseName = name.trim().replace(/\s+/g, '_') || 'parameter'
-  const base = `${inValue}:${baseName}`
-  if (!existing.some((parameter) => parameter.id === base)) {
-    return base
-  }
-
-  let index = 2
-  let candidate = `${base}_${index}`
-  while (existing.some((parameter) => parameter.id === candidate)) {
-    index += 1
-    candidate = `${base}_${index}`
-  }
-
-  return candidate
-}
-
-function SaveButton({ status, isDirty, disabled, onClick }: { status: SaveStatus; isDirty: boolean; disabled: boolean; onClick: () => void }): React.JSX.Element {
-  const label = status === 'saving' ? 'Saving...' : status === 'saved' ? 'Saved' : 'Save'
-  const colour = status === 'saved'
-    ? 'bg-primary/80 border-primary/40 text-white'
-    : isDirty
-      ? 'bg-primary hover:bg-primary/80 border-transparent text-white'
-      : 'bg-surface-raised border-surface-border text-slate-400 hover:text-slate-200'
-  return (
-    <button
-      className={`inline-flex items-center px-4 py-1.5 text-xs font-semibold rounded-lg border transition-colors disabled:opacity-40 ${colour}`}
-      disabled={disabled}
-      onClick={onClick}
-    >
-      {label}
-    </button>
-  )
-}
-
-function SaveFeedback({ status }: { status: SaveStatus }): React.JSX.Element | null {
-  if (status === 'idle' || status === 'saving' || status === 'saved') return null
-  if (status.type === 'error') {
-    return (
-      <div className="mb-5 rounded-lg border border-secondary/60 bg-secondary/10 px-4 py-3 text-sm text-slate-300">
-        {status.message}
-      </div>
-    )
-  }
-  return (
-    <div className="mb-5 rounded-lg border border-accent/40 bg-accent/5 px-4 py-3">
-      <p className="text-sm text-accent">Save blocked: {status.issues.length} validation issue{status.issues.length === 1 ? '' : 's'}.</p>
-      <ul className="mt-2 space-y-1">
-        {status.issues.slice(0, 6).map((issue, i) => (
-          <li key={i} className="text-xs text-slate-300">{issue.path ? `${issue.path}: ` : ''}{issue.message}</li>
-        ))}
-      </ul>
-    </div>
-  )
-}
-
-function ValidationResultPanel({ result }: { result: ValidateOpenApiResult }): React.JSX.Element | null {
-  if (result.status === 'valid') {
-    return <div className="rounded-lg border border-primary/50 bg-primary/10 px-4 py-3 text-sm text-slate-200">OpenAPI document is structurally valid.</div>
-  }
-  if (result.status === 'error') {
-    return <div className="rounded-lg border border-secondary/60 bg-secondary/10 px-4 py-3 text-sm text-slate-300">{result.message}</div>
-  }
-  return (
-    <div className="rounded-lg border border-accent/40 bg-accent/5 px-4 py-3">
-      <p className="text-sm text-accent">{result.issueCount} validation issue{result.issueCount === 1 ? '' : 's'}.</p>
-      <ul className="mt-2 space-y-1">
-        {result.issues.slice(0, 8).map((issue, i) => (
-          <li key={i} className="text-xs text-slate-300">{issue.path ? `${issue.path}: ` : ''}{issue.message}</li>
-        ))}
-      </ul>
-      {result.issueCount > 8 ? <p className="mt-1 text-xs text-slate-500">Showing first 8 issues.</p> : null}
-    </div>
-  )
-}
-
-function ApiDropdownCard({
-  api,
-  isSelected,
-  isMenuOpen,
-  onToggleMenu,
-  onSelect,
-  onEnvironment,
-  onNewFolder,
-  onNewRequest
-}: {
-  api: ApiSummary
-  isSelected: boolean
-  isMenuOpen: boolean
-  onToggleMenu: () => void
-  onSelect: () => void
-  onEnvironment: () => void
-  onNewFolder: () => void
-  onNewRequest: () => void
-}): React.JSX.Element {
-  return (
-    <div className={`rounded-lg border ${isSelected ? 'border-primary/35 bg-primary/10' : 'border-surface-border bg-surface-base'}`}>
-      <div className="flex items-center gap-1 px-2.5 py-2">
-        <button className="flex-1 text-left min-w-0" onClick={onSelect}>
-          <div className="text-sm font-medium truncate">{api.name}</div>
-          <div className="text-xs text-slate-500 truncate">{api.operationCount} operations</div>
-        </button>
-        <button
-          className="text-slate-400 hover:text-slate-100 rounded px-1 shrink-0"
-          onClick={onNewFolder}
-          title="New Folder"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-            <line x1="12" y1="11" x2="12" y2="17"/>
-            <line x1="9" y1="14" x2="15" y2="14"/>
-          </svg>
-        </button>
-        <button
-          className="text-slate-400 hover:text-slate-100 rounded px-1 shrink-0"
-          onClick={onNewRequest}
-          title="New Request"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="10"/>
-            <line x1="12" y1="8" x2="12" y2="16"/>
-            <line x1="8" y1="12" x2="16" y2="12"/>
-          </svg>
-        </button>
-        <button
-          className="text-slate-400 hover:text-slate-100 rounded px-1 shrink-0"
-          onClick={onToggleMenu}
-          title="API actions"
-        >
-          ⋯
-        </button>
-      </div>
-
-      {isMenuOpen ? (
-        <div className="px-2.5 pb-2 flex flex-col gap-1">
-          <button className="text-left text-xs px-2 py-1 rounded hover:bg-surface-raised" onClick={onEnvironment}>Environment</button>
-          <button className="text-left text-xs px-2 py-1 rounded hover:bg-surface-raised" onClick={onNewFolder}>New Folder</button>
-          <button className="text-left text-xs px-2 py-1 rounded hover:bg-surface-raised" onClick={onNewRequest}>New Request</button>
-        </div>
-      ) : null}
-    </div>
-  )
-}
-
-function TitleBar({ workspaceName }: { workspaceName?: string }): React.JSX.Element {
-  const [maximized, setMaximized] = React.useState(false)
-
-  React.useEffect(() => {
-    let mounted = true
-    void window.appBridge.windowControls.isMaximized().then((m) => { if (mounted) setMaximized(m) })
-    window.appBridge.windowControls.onMaximizeChange((m) => { if (mounted) setMaximized(m) })
-    return () => { mounted = false }
-  }, [])
-
-  return (
-    <div
-      className="flex h-9 items-stretch shrink-0 bg-surface-lower border-b border-surface-border"
-      style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
-    >
-      <div
-        className="flex items-center px-4 w-56 shrink-0"
-        style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-      >
-        <BrandLogo />
-      </div>
-      <div className="flex-1 flex items-center justify-center pointer-events-none">
-        {workspaceName ? (
-          <span className="text-xs text-slate-500 truncate max-w-[260px]">{workspaceName}</span>
-        ) : null}
-      </div>
-      <div
-        className="flex items-stretch"
-        style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-      >
-        <TitleBarButton onClick={() => window.appBridge.windowControls.minimize()} title="Minimize">
-          <svg width="10" height="1" viewBox="0 0 10 1" aria-hidden="true"><line x1="0" y1="0.5" x2="10" y2="0.5" stroke="currentColor" strokeWidth="1.5" /></svg>
-        </TitleBarButton>
-        <TitleBarButton
-          onClick={() => { window.appBridge.windowControls.toggleMaximize() }}
-          title={maximized ? 'Restore' : 'Maximize'}
-        >
-          {maximized ? (
-            <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
-              <rect x="2" y="0" width="8" height="8" rx="0.5" stroke="currentColor" strokeWidth="1.5" fill="none" />
-              <rect x="0" y="2" width="8" height="8" rx="0.5" stroke="currentColor" strokeWidth="1.5" className="fill-surface-lower" />
-            </svg>
-          ) : (
-            <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
-              <rect x="0.75" y="0.75" width="8.5" height="8.5" rx="0.5" stroke="currentColor" strokeWidth="1.5" fill="none" />
-            </svg>
-          )}
-        </TitleBarButton>
-        <TitleBarButton onClick={() => window.appBridge.windowControls.close()} title="Close" isClose>
-          <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
-            <line x1="1" y1="1" x2="9" y2="9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-            <line x1="9" y1="1" x2="1" y2="9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-          </svg>
-        </TitleBarButton>
-      </div>
-    </div>
-  )
-}
-
-function TitleBarButton({
-  onClick, title, isClose = false, children
-}: {
-  onClick: () => void
-  title: string
-  isClose?: boolean
-  children: React.ReactNode
-}): React.JSX.Element {
-  return (
-    <button
-      title={title}
-      onClick={onClick}
-      className={`flex items-center justify-center w-11 h-full text-slate-400 transition-colors ${isClose ? 'hover:bg-secondary hover:text-white' : 'hover:bg-surface-raised hover:text-slate-200'}`}
-    >
-      {children}
-    </button>
-  )
-}
-
-function BrandLogo(): React.JSX.Element {
-  return (
-    <span className="flex items-baseline font-mono text-sm font-bold leading-none" aria-label="APICaramba">
-      <span className="text-accent mr-1.5">{'>'}</span>
-      <span className="text-accent">{'{'}</span>
-      <span className="text-primary">api</span>
-      <span className="text-accent">{':'}</span>
-      <span className="text-secondary">caramba</span>
-      <span className="text-accent">{'}'}</span>
-    </span>
-  )
-}
-
-function EditorSkeleton(): React.JSX.Element {
-  return (
-    <div className="space-y-5" aria-hidden="true">
-      <div className="h-7 w-48 rounded bg-surface-border animate-pulse" />
-      <div className="space-y-2">
-        <div className="h-4 w-16 rounded bg-surface-border animate-pulse" />
-        <div className="h-10 rounded bg-surface-border animate-pulse" />
-      </div>
-      <div className="space-y-2">
-        <div className="h-4 w-20 rounded bg-surface-border animate-pulse" />
-        <div className="h-28 rounded bg-surface-border animate-pulse" />
-      </div>
-    </div>
-  )
-}
-
-function SidebarPlaceholder(): React.JSX.Element {
-  return (
-    <div className="w-full space-y-1" aria-hidden="true">
-      {[80, 60, 70].map((w, i) => (
-        <div key={i} className="h-5 rounded bg-surface-border animate-pulse" style={{ width: `${w}%` }} />
-      ))}
-    </div>
-  )
-}
-
-function SchemaEditor({
-  schema,
-  availableSchemas,
-  onChange,
-  onAddProperty,
-  onUpdateProperty,
-  onDeleteProperty
-}: {
-  schema: SchemaDetail
-  availableSchemas: SchemaDetail[]
-  onChange: (schema: SchemaDetail) => void
-  onAddProperty: () => void
-  onUpdateProperty: (propertyId: string, patch: Partial<SchemaPropertyDetail>) => void
-  onDeleteProperty: (propertyId: string) => void
-}): React.JSX.Element {
-  const typeOptions: SchemaPropertyType[] = ['string', 'number', 'integer', 'boolean', 'array', 'object']
-  const primitiveOptions: SchemaPrimitiveType[] = ['string', 'number', 'integer', 'boolean']
-  const schemaOptions = availableSchemas
-    .filter((candidate) => candidate.id !== schema.id)
-    .sort((a, b) => a.name.localeCompare(b.name))
-
-  return (
-    <div className="flex flex-col gap-4">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        <label className="flex flex-col gap-1">
-          <span className="text-xs text-slate-400">Schema Name</span>
-          <input
-            className="rounded-lg border border-surface-border bg-surface-lower px-3 py-2 text-sm text-slate-100 outline-none focus:border-primary/60 font-mono"
-            value={schema.name}
-            onChange={(event) => onChange({ ...schema, name: event.target.value })}
-          />
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-xs text-slate-400">Description</span>
-          <input
-            className="rounded-lg border border-surface-border bg-surface-lower px-3 py-2 text-sm text-slate-100 outline-none focus:border-primary/60"
-            value={schema.description}
-            onChange={(event) => onChange({ ...schema, description: event.target.value })}
-          />
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-xs text-slate-400">Usage Tag</span>
-          <select
-            className="rounded-lg border border-surface-border bg-surface-lower px-3 py-2 text-sm text-slate-100 outline-none focus:border-primary/60"
-            value={schema.usageTag ?? 'Both'}
-            onChange={(event) => onChange({ ...schema, usageTag: event.target.value as SchemaUsageTag })}
-          >
-            <option value="Rqst">Request</option>
-            <option value="Resp">Response</option>
-            <option value="Both">Both</option>
-          </select>
-        </label>
-      </div>
-
-      <div className="rounded-xl border border-surface-border bg-surface-lower/60">
-        <div className="flex items-center justify-between px-3 py-2 border-b border-surface-border">
-          <h4 className="text-xs font-semibold text-slate-200 uppercase tracking-wider">Properties</h4>
-          <button
-            className="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-md border border-surface-border text-slate-300 hover:bg-surface-raised"
-            onClick={onAddProperty}
-          >
-            + Add Property
-          </button>
-        </div>
-        {schema.properties.length === 0 ? (
-          <p className="px-3 py-3 text-xs text-slate-500">No properties defined.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-xs">
-              <thead>
-                <tr className="text-left text-slate-500 border-b border-surface-border">
-                  <th className="px-3 py-2 font-medium">Name</th>
-                  <th className="px-3 py-2 font-medium">Type</th>
-                  <th className="px-3 py-2 font-medium">Definition</th>
-                  <th className="px-3 py-2 font-medium">Required</th>
-                  <th className="px-3 py-2 font-medium">Description</th>
-                  <th className="px-3 py-2 font-medium w-16" />
-                </tr>
-              </thead>
-              <tbody>
-                {schema.properties.map((property) => (
-                  <tr key={property.id} className="border-b border-surface-border/70 align-top">
-                    <td className="px-3 py-2">
-                      <input
-                        className="w-full rounded border border-surface-border bg-surface-base px-2 py-1 text-xs text-slate-100 outline-none focus:border-primary/60 font-mono"
-                        value={property.name}
-                        onChange={(event) => onUpdateProperty(property.id, { name: event.target.value })}
-                      />
-                    </td>
-                    <td className="px-3 py-2">
-                      <select
-                        className="w-full rounded border border-surface-border bg-surface-base px-2 py-1 text-xs text-slate-100 outline-none focus:border-primary/60"
-                        value={property.type}
-                        onChange={(event) => {
-                          const nextType = event.target.value as SchemaPropertyType
-                          if (nextType === 'array') {
-                            onUpdateProperty(property.id, {
-                              type: nextType,
-                              arrayItemType: property.arrayItemType ?? 'string',
-                              arrayItemSchemaName: ''
-                            })
-                            return
-                          }
-
-                          if (nextType === 'object') {
-                            onUpdateProperty(property.id, {
-                              type: nextType,
-                              objectSchemaName: property.objectSchemaName ?? ''
-                            })
-                            return
-                          }
-
-                          onUpdateProperty(property.id, {
-                            type: nextType,
-                            arrayItemType: undefined,
-                            arrayItemSchemaName: undefined,
-                            objectSchemaName: undefined
-                          })
-                        }}
-                      >
-                        {typeOptions.map((type) => (
-                          <option key={type} value={type}>{type}</option>
-                        ))}
-                      </select>
-                    </td>
-                    <td className="px-3 py-2">
-                      {property.type === 'array' ? (
-                        <div className="grid grid-cols-2 gap-2">
-                          <select
-                            className="w-full rounded border border-surface-border bg-surface-base px-2 py-1 text-xs text-slate-100 outline-none focus:border-primary/60"
-                            value={property.arrayItemSchemaName ? 'schema' : 'primitive'}
-                            onChange={(event) => {
-                              const mode = event.target.value
-                              if (mode === 'schema') {
-                                onUpdateProperty(property.id, {
-                                  arrayItemSchemaName: schemaOptions[0]?.name ?? '',
-                                  arrayItemType: undefined
-                                })
-                              } else {
-                                onUpdateProperty(property.id, {
-                                  arrayItemSchemaName: '',
-                                  arrayItemType: property.arrayItemType ?? 'string'
-                                })
-                              }
-                            }}
-                          >
-                            <option value="primitive">Primitive</option>
-                            <option value="schema">Schema</option>
-                          </select>
-                          {property.arrayItemSchemaName ? (
-                            <select
-                              className="w-full rounded border border-surface-border bg-surface-base px-2 py-1 text-xs text-slate-100 outline-none focus:border-primary/60"
-                              value={property.arrayItemSchemaName}
-                              onChange={(event) => onUpdateProperty(property.id, { arrayItemSchemaName: event.target.value })}
-                            >
-                              {schemaOptions.length === 0 ? <option value="">No schemas</option> : null}
-                              {schemaOptions.map((schemaOption) => (
-                                <option key={schemaOption.id} value={schemaOption.name}>{schemaOption.name}</option>
-                              ))}
-                            </select>
-                          ) : (
-                            <select
-                              className="w-full rounded border border-surface-border bg-surface-base px-2 py-1 text-xs text-slate-100 outline-none focus:border-primary/60"
-                              value={property.arrayItemType ?? 'string'}
-                              onChange={(event) => onUpdateProperty(property.id, { arrayItemType: event.target.value as SchemaPrimitiveType })}
-                            >
-                              {primitiveOptions.map((type) => (
-                                <option key={type} value={type}>{type}</option>
-                              ))}
-                            </select>
-                          )}
-                        </div>
-                      ) : property.type === 'object' ? (
-                        <select
-                          className="w-full rounded border border-surface-border bg-surface-base px-2 py-1 text-xs text-slate-100 outline-none focus:border-primary/60"
-                          value={property.objectSchemaName ?? ''}
-                          onChange={(event) => onUpdateProperty(property.id, { objectSchemaName: event.target.value })}
-                        >
-                          <option value="">Inline object</option>
-                          {schemaOptions.map((schemaOption) => (
-                            <option key={schemaOption.id} value={schemaOption.name}>{schemaOption.name}</option>
-                          ))}
-                        </select>
-                      ) : (
-                        <span className="text-slate-500">-</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2">
-                      <input
-                        type="checkbox"
-                        checked={property.required}
-                        onChange={(event) => onUpdateProperty(property.id, { required: event.target.checked })}
-                      />
-                    </td>
-                    <td className="px-3 py-2">
-                      <input
-                        className="w-full rounded border border-surface-border bg-surface-base px-2 py-1 text-xs text-slate-100 outline-none focus:border-primary/60"
-                        value={property.description}
-                        onChange={(event) => onUpdateProperty(property.id, { description: event.target.value })}
-                      />
-                    </td>
-                    <td className="px-3 py-2 text-right">
-                      <button className="text-slate-500 hover:text-red-300" onClick={() => onDeleteProperty(property.id)}>
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-function createSchemaName(baseName: string, existing: SchemaDetail[]): string {
-  const normalizedBase = baseName.trim().replace(/\s+/g, '') || 'Schema'
-  const existingNames = new Set(existing.map((schema) => schema.name))
-  if (!existingNames.has(normalizedBase)) {
-    return normalizedBase
-  }
-
-  let index = 2
-  let candidate = `${normalizedBase}${index}`
-  while (existingNames.has(candidate)) {
-    index += 1
-    candidate = `${normalizedBase}${index}`
-  }
-
-  return candidate
-}
-
-function createSchemaId(name: string, existing: SchemaDetail[]): string {
-  const base = `schema:${name.toLowerCase().replace(/[^a-z0-9_-]+/g, '-')}`
-  const existingIds = new Set(existing.map((schema) => schema.id))
-  if (!existingIds.has(base)) {
-    return base
-  }
-
-  let index = 2
-  let candidate = `${base}-${index}`
-  while (existingIds.has(candidate)) {
-    index += 1
-    candidate = `${base}-${index}`
-  }
-
-  return candidate
 }
