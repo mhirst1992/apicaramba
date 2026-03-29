@@ -63,11 +63,18 @@ function statusColour(code: number): string {
   return 'bg-red-500/20 text-red-300 border-red-500/30'
 }
 
-function tryPrettyJson(raw: string): string {
+function formatJsonForDisplay(raw: string): { text: string; isJson: boolean } {
+  if (raw.trim() === '') {
+    return { text: '', isJson: true }
+  }
+
   try {
-    return JSON.stringify(JSON.parse(raw), null, 2)
+    return {
+      text: JSON.stringify(JSON.parse(raw), null, 2),
+      isJson: true
+    }
   } catch {
-    return raw
+    return { text: raw, isJson: false }
   }
 }
 
@@ -114,9 +121,9 @@ function escapeHtml(value: string): string {
     .replace(/>/g, '&gt;')
 }
 
-function syntaxHighlightJson(raw: string): string {
+function syntaxHighlightJson(raw: string, placeholderPreview = '{"key": "value"}'): string {
   if (raw.length === 0) {
-    return '<span style="color:#64748B">{&quot;key&quot;: &quot;value&quot;}</span>'
+    return `<span style="color:#64748B;-webkit-user-select:text;user-select:text;">${escapeHtml(placeholderPreview)}</span>`
   }
 
   const tokenPattern = /"(?:\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"\s*:|"(?:\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"|\btrue\b|\bfalse\b|\bnull\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?/g
@@ -141,12 +148,112 @@ function syntaxHighlightJson(raw: string): string {
       color = '#F9A8D4'
     }
 
-    highlighted += `<span style="color:${color}">${escapeHtml(token)}</span>`
+    highlighted += `<span style="color:${color};-webkit-user-select:text;user-select:text;">${escapeHtml(token)}</span>`
     lastIndex = start + token.length
   }
 
   highlighted += escapeHtml(raw.slice(lastIndex))
   return highlighted
+}
+
+interface JsonCodePanelProps {
+  sectionLabel: string
+  value: string
+  onChange?: (nextValue: string) => void
+  statusLabel?: string
+  statusClassName?: string
+  subStatusMessage?: string | null
+  placeholder?: string
+  placeholderPreview?: string
+  readOnly?: boolean
+}
+
+function JsonCodePanel({
+  sectionLabel,
+  value,
+  onChange,
+  statusLabel,
+  statusClassName = 'text-slate-400',
+  subStatusMessage,
+  placeholder = '{"key": "value"}',
+  placeholderPreview = '{"key": "value"}',
+  readOnly = false
+}: JsonCodePanelProps): React.JSX.Element {
+  const [scrollTop, setScrollTop] = React.useState(0)
+  const [scrollLeft, setScrollLeft] = React.useState(0)
+
+  const lineCount = React.useMemo(() => Math.max(1, value.split('\n').length), [value])
+  const highlightedValue = React.useMemo(
+    () => syntaxHighlightJson(value, placeholderPreview),
+    [value, placeholderPreview]
+  )
+
+  return (
+    <div>
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <span className="block text-xs font-medium text-slate-400 uppercase tracking-wider">{sectionLabel}</span>
+        {statusLabel ? (
+          <span className={`text-xs font-medium ${statusClassName}`}>{statusLabel}</span>
+        ) : null}
+      </div>
+      <div className="rounded-xl border border-surface-border bg-surface-lower">
+        <div className="flex items-center justify-between border-b border-surface-border bg-surface-base/60 px-3 py-2">
+          <span className="text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500">application/json</span>
+          {subStatusMessage ? <span className="text-xs text-slate-400">{subStatusMessage}</span> : null}
+        </div>
+        <div className="flex h-[18rem] min-h-[18rem] resize-y items-stretch overflow-hidden">
+          <div className="w-14 shrink-0 overflow-hidden border-r border-surface-border bg-surface-base/40 px-2 py-3 text-right font-mono text-xs leading-6 text-slate-500 select-none">
+            <div style={{ transform: `translateY(-${scrollTop}px)` }}>
+              {Array.from({ length: lineCount }, (_, index) => (
+                <div key={index + 1} className="h-6">{index + 1}</div>
+              ))}
+            </div>
+          </div>
+          <div className="relative flex-1 min-w-0 overflow-hidden">
+            {readOnly ? (
+              <div
+                className="relative z-10 h-full w-full overflow-auto"
+                onScroll={(event) => {
+                  setScrollTop(event.currentTarget.scrollTop)
+                  setScrollLeft(event.currentTarget.scrollLeft)
+                }}
+              >
+                <pre
+                  className="m-0 px-3 py-3 font-mono text-sm leading-6 whitespace-pre select-text"
+                  dangerouslySetInnerHTML={{ __html: `${highlightedValue}\n` }}
+                />
+              </div>
+            ) : (
+              <>
+                <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden" aria-hidden="true">
+                  <pre
+                    className="m-0 px-3 py-3 font-mono text-sm leading-6 whitespace-pre"
+                    style={{ transform: `translate(${-scrollLeft}px, -${scrollTop}px)` }}
+                    dangerouslySetInnerHTML={{ __html: `${highlightedValue}\n` }}
+                  />
+                </div>
+                <textarea
+                  className="relative z-10 block h-full w-full resize-none overflow-auto bg-transparent px-3 py-3 font-mono text-sm leading-6 text-transparent caret-slate-100 focus:outline-none"
+                  placeholder={placeholder}
+                  spellCheck={false}
+                  wrap="off"
+                  value={value}
+                  onChange={(event) => onChange?.(event.target.value)}
+                  onScroll={(event) => {
+                    setScrollTop(event.currentTarget.scrollTop)
+                    setScrollLeft(event.currentTarget.scrollLeft)
+                  }}
+                  style={{
+                    WebkitTextFillColor: 'transparent'
+                  }}
+                />
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function defaultValueForPrimitive(type: SchemaPropertyDetail['type'] | SchemaPropertyDetail['arrayItemType']): unknown {
@@ -234,16 +341,19 @@ export function RequestRunner({ operation, environment, schemas, onExecute }: Pr
   const [headers, setHeaders] = React.useState<RequestHeader[]>([{ key: '', value: '' }])
   const [parameterValues, setParameterValues] = React.useState<Record<string, string>>({})
   const [body, setBody] = React.useState(() => buildInitialBody(operation, schemas))
-  const [bodyScrollTop, setBodyScrollTop] = React.useState(0)
-  const [bodyScrollLeft, setBodyScrollLeft] = React.useState(0)
   const [loading, setLoading] = React.useState(false)
   const [response, setResponse] = React.useState<ExecuteRequestResult | null>(null)
   const [showResHeaders, setShowResHeaders] = React.useState(false)
 
   const hasBody = METHODS_WITH_BODY.has(operation.method)
   const bodyValidation = React.useMemo(() => validateJson(body), [body])
-  const bodyLineCount = React.useMemo(() => Math.max(1, body.split('\n').length), [body])
-  const highlightedBody = React.useMemo(() => syntaxHighlightJson(body), [body])
+  const responseBody = React.useMemo(() => {
+    if (!response || response.status === 'network-error') {
+      return { text: '', isJson: true }
+    }
+
+    return formatJsonForDisplay(response.body)
+  }, [response])
 
   const categorizedValues = React.useMemo(() => {
     const pathValues: Record<string, string> = {}
@@ -442,56 +552,18 @@ export function RequestRunner({ operation, environment, schemas, onExecute }: Pr
 
       {/* Body editor (only for POST/PUT/PATCH) */}
       {hasBody ? (
-        <div>
-          <div className="mb-2 flex items-center justify-between gap-3">
-            <span className="block text-xs font-medium text-slate-400 uppercase tracking-wider">Body</span>
-            <span className={`text-xs font-medium ${bodyValidation.valid ? 'text-emerald-300' : 'text-amber-300'}`}>
-              {bodyValidation.valid
-                ? 'Valid JSON'
-                : `Invalid JSON${bodyValidation.line && bodyValidation.column ? ` at ${bodyValidation.line}:${bodyValidation.column}` : ''}`}
-            </span>
-          </div>
-          <div className="rounded-xl border border-surface-border bg-surface-lower">
-            <div className="flex items-center justify-between border-b border-surface-border bg-surface-base/60 px-3 py-2">
-              <span className="text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500">application/json</span>
-              {!bodyValidation.valid ? (
-                <span className="text-xs text-amber-300">{bodyValidation.message}</span>
-              ) : null}
-            </div>
-            <div className="flex h-[18rem] min-h-[18rem] resize-y items-stretch overflow-hidden">
-              <div className="w-14 shrink-0 overflow-hidden border-r border-surface-border bg-surface-base/40 px-2 py-3 text-right font-mono text-xs leading-6 text-slate-500 select-none">
-                <div style={{ transform: `translateY(-${bodyScrollTop}px)` }}>
-                  {Array.from({ length: bodyLineCount }, (_, index) => (
-                    <div key={index + 1} className="h-6">{index + 1}</div>
-                  ))}
-                </div>
-              </div>
-              <div className="relative flex-1 min-w-0 overflow-hidden">
-                <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden" aria-hidden="true">
-                  <pre
-                    className="m-0 px-3 py-3 font-mono text-sm leading-6 whitespace-pre"
-                    style={{ transform: `translate(${-bodyScrollLeft}px, -${bodyScrollTop}px)` }}
-                    dangerouslySetInnerHTML={{ __html: `${highlightedBody}\n` }}
-                  />
-                </div>
-                <textarea
-                  className="relative z-10 block h-full w-full resize-none overflow-auto bg-transparent px-3 py-3 font-mono text-sm leading-6 text-transparent caret-slate-100 focus:outline-none"
-                  placeholder='{"key": "value"}'
-                  spellCheck={false}
-                  value={body}
-                  onChange={(e) => setBody(e.target.value)}
-                  onScroll={(event) => {
-                    setBodyScrollTop(event.currentTarget.scrollTop)
-                    setBodyScrollLeft(event.currentTarget.scrollLeft)
-                  }}
-                  style={{
-                    WebkitTextFillColor: 'transparent'
-                  }}
-                />
-              </div>
-            </div>
-          </div>
-        </div>
+        <JsonCodePanel
+          sectionLabel="Body"
+          value={body}
+          onChange={setBody}
+          statusLabel={bodyValidation.valid
+            ? 'Valid JSON'
+            : `Invalid JSON${bodyValidation.line && bodyValidation.column ? ` at ${bodyValidation.line}:${bodyValidation.column}` : ''}`}
+          statusClassName={bodyValidation.valid ? 'text-emerald-300' : 'text-amber-300'}
+          subStatusMessage={bodyValidation.valid ? null : bodyValidation.message}
+          placeholder='{"key": "value"}'
+          placeholderPreview='{"key": "value"}'
+        />
       ) : null}
 
       {/* Response panel */}
@@ -533,9 +605,18 @@ export function RequestRunner({ operation, environment, schemas, onExecute }: Pr
               ) : null}
 
               {/* Response body */}
-              <pre className="px-4 py-3 text-xs font-mono text-slate-200 whitespace-pre-wrap break-all max-h-96 overflow-y-auto leading-relaxed">
-                {tryPrettyJson(response.body) || <span className="text-slate-500">(empty body)</span>}
-              </pre>
+              <div className="px-4 py-3">
+                <JsonCodePanel
+                  sectionLabel="Response JSON"
+                  value={responseBody.text}
+                  readOnly
+                  statusLabel={responseBody.isJson ? 'Valid JSON' : 'Raw text'}
+                  statusClassName={responseBody.isJson ? 'text-emerald-300' : 'text-slate-400'}
+                  subStatusMessage={responseBody.isJson ? null : 'Response is not valid JSON; showing raw body.'}
+                  placeholder='(empty body)'
+                  placeholderPreview='(empty body)'
+                />
+              </div>
             </>
           )}
         </div>
