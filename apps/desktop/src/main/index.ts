@@ -15,6 +15,8 @@ import type {
   OpenWorkspaceResult,
   CreateWorkspaceRequest,
   CreateWorkspaceResult,
+  CreateApiRequest,
+  CreateApiResult,
   RecentWorkspace,
   OpenRecentWorkspaceRequest,
   LoadRecentWorkspacesResult,
@@ -50,6 +52,15 @@ interface BootstrapOpenApiDocument {
 interface RecentWorkspacesConfig {
   version: string
   workspaces: RecentWorkspace[]
+}
+
+interface NewApiDocument {
+  openapi: string
+  info: {
+    title: string
+    version: string
+  }
+  paths: Record<string, never>
 }
 
 function createWindow(): void {
@@ -252,6 +263,73 @@ async function handleOpenRecentWorkspace(
   }
 }
 
+async function handleCreateApi(request: CreateApiRequest): Promise<CreateApiResult> {
+  const workspaceRootPath = request.workspaceRootPath?.trim()
+  const apiName = request.apiName?.trim()
+
+  if (!workspaceRootPath) {
+    return { status: 'error', message: 'Workspace path is required.' }
+  }
+
+  if (!apiName) {
+    return { status: 'error', message: 'API name is required.' }
+  }
+
+  const baseFileName = slugifyFileStem(apiName)
+
+  try {
+    const fileName = await resolveUniqueApiFileName(workspaceRootPath, baseFileName)
+    const apiDoc: NewApiDocument = {
+      openapi: '3.0.3',
+      info: {
+        title: apiName,
+        version: '1.0.0'
+      },
+      paths: {}
+    }
+
+    await writeJsonFile(join(workspaceRootPath, fileName), apiDoc)
+
+    const snapshot = await loadWorkspaceSnapshot(workspaceRootPath)
+    return { status: 'created', snapshot }
+  } catch (error) {
+    return {
+      status: 'error',
+      message: error instanceof Error ? error.message : 'Failed to create API.'
+    }
+  }
+}
+
+function slugifyFileStem(input: string): string {
+  const stem = input
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^[-._]+|[-._]+$/g, '')
+
+  return stem.length > 0 ? stem : 'api'
+}
+
+async function resolveUniqueApiFileName(workspaceRootPath: string, baseStem: string): Promise<string> {
+  let index = 0
+
+  while (index < 1000) {
+    const fileName = index === 0 ? `${baseStem}.json` : `${baseStem}-${index + 1}.json`
+    const candidatePath = join(workspaceRootPath, fileName)
+
+    try {
+      await fs.access(candidatePath)
+      index += 1
+      continue
+    } catch {
+      return fileName
+    }
+  }
+
+  throw new Error('Could not allocate a filename for the new API.')
+}
+
 async function createWorkspaceBootstrapFiles(
   workspacePath: string,
   workspaceName: string
@@ -400,6 +478,7 @@ app.whenReady().then(() => {
   ipcMain.handle('workspace:open-recent', (_, request: OpenRecentWorkspaceRequest) =>
     handleOpenRecentWorkspace(request)
   )
+  ipcMain.handle('workspace:create-api', (_, request: CreateApiRequest) => handleCreateApi(request))
   ipcMain.handle('openapi:validate', (_, request: ValidateOpenApiRequest) => validateOpenApi(request))
   ipcMain.handle('openapi:load-editor', (_, request: LoadApiEditorRequest) => handleLoadApiEditor(request))
   ipcMain.handle('openapi:save-editor', (_, request: SaveApiEditorRequest) => handleSaveApiEditor(request))
@@ -433,6 +512,7 @@ app.on('will-quit', () => {
   ipcMain.removeHandler('workspace:create')
   ipcMain.removeHandler('workspace:list-recent')
   ipcMain.removeHandler('workspace:open-recent')
+  ipcMain.removeHandler('workspace:create-api')
   ipcMain.removeHandler('openapi:validate')
   ipcMain.removeHandler('openapi:load-editor')
   ipcMain.removeHandler('openapi:save-editor')
