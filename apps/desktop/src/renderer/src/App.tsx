@@ -10,7 +10,8 @@ import type {
   OperationDetail,
   SaveApiEditorResult,
   EnvironmentsConfig,
-  Environment
+  Environment,
+  HttpMethod
 } from '@apicaramba/shared-types'
 import { EndpointTree } from './components/EndpointTree.js'
 import { OperationEditor } from './components/OperationEditor.js'
@@ -70,6 +71,10 @@ export default function App(): React.JSX.Element {
   const [showRenameFolderModal, setShowRenameFolderModal] = React.useState(false)
   const [renameFolderTargetId, setRenameFolderTargetId] = React.useState<string | null>(null)
   const [renameFolderValue, setRenameFolderValue] = React.useState('')
+  const [showCreateRequestModal, setShowCreateRequestModal] = React.useState(false)
+  const [newRequestMethod, setNewRequestMethod] = React.useState<HttpMethod>('GET')
+  const [newRequestPath, setNewRequestPath] = React.useState('')
+  const [newRequestError, setNewRequestError] = React.useState<string | null>(null)
 
   const selectedApi = React.useMemo(
     () => snapshot?.apis.find((a) => a.id === selectedApiId) ?? null,
@@ -421,6 +426,55 @@ export default function App(): React.JSX.Element {
     if (selectedFolderId === folderId) setSelectedFolderId(null)
   }
 
+  function onConfirmCreateRequest(): void {
+    const path = newRequestPath.trim()
+    if (!path || !editorState) return
+
+    const normalizedPath = path.startsWith('/') ? path : `/${path}`
+    const key = `${newRequestMethod}:${normalizedPath}`
+
+    if (editorState.operations.some((op) => op.key === key)) {
+      setNewRequestError(`${newRequestMethod} ${normalizedPath} already exists in this API.`)
+      return
+    }
+
+    const opId = `${editorState.structure.id}__op__${Date.now()}`
+    const newRef: OperationRef = { id: opId, operationId: null, method: newRequestMethod, path: normalizedPath }
+    const newDetail: OperationDetail = {
+      key,
+      operationId: null,
+      method: newRequestMethod,
+      path: normalizedPath,
+      summary: '',
+      description: '',
+      tags: []
+    }
+
+    updateStructure((draft) => {
+      if (selectedFolderId) {
+        const folder = findFolderById(draft.rootFolder, selectedFolderId)
+        if (folder) {
+          folder.operations.push(newRef)
+        } else {
+          draft.ungrouped.push(newRef)
+        }
+      } else {
+        draft.ungrouped.push(newRef)
+      }
+    })
+
+    setEditorState((prev) => {
+      if (!prev) return prev
+      return { ...prev, operations: [...prev.operations, newDetail] }
+    })
+
+    setSelectedOpKey(key)
+    setShowCreateRequestModal(false)
+    setNewRequestMethod('GET')
+    setNewRequestPath('')
+    setNewRequestError(null)
+  }
+
   function collectAndRemoveFolder(parent: FolderNode, folderId: string): FolderNode | null {
     const idx = parent.children.findIndex((c) => c.id === folderId)
     if (idx >= 0) {
@@ -616,8 +670,15 @@ export default function App(): React.JSX.Element {
                     setOpenApiMenuId(null)
                   }}
                   onNewRequest={() => {
-                    window.alert('New Request is stubbed for this phase.')
                     setOpenApiMenuId(null)
+                    setNewRequestError(null)
+                    setNewRequestPath('')
+                    setNewRequestMethod('GET')
+                    if (selectedApiId !== api.id) {
+                      void onSelectApi(api).then(() => setShowCreateRequestModal(true))
+                    } else {
+                      setShowCreateRequestModal(true)
+                    }
                   }}
                 />
                 {editorState && selectedApiId === api.id ? (
@@ -943,6 +1004,58 @@ export default function App(): React.JSX.Element {
                 onClick={() => { void onCreateWorkspace() }}
               >
                 {loading ? 'Creating...' : 'Create'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {showCreateRequestModal ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-sm rounded-xl border border-surface-border bg-surface-base p-4 shadow-xl">
+            <h3 className="text-sm font-semibold text-slate-100">New Request</h3>
+            <p className="mt-1 text-xs text-slate-400">
+              Choose an HTTP method and path. The request will be added to{' '}
+              {selectedFolderId ? 'the selected folder' : 'Unsorted'} and you can edit it immediately.
+            </p>
+            <div className="mt-3 flex gap-2">
+              <select
+                value={newRequestMethod}
+                onChange={(e) => setNewRequestMethod(e.target.value as HttpMethod)}
+                className="rounded-lg border border-surface-border bg-surface-lower px-2 py-2 text-sm text-slate-100 outline-none focus:border-primary/60 shrink-0"
+              >
+                {(['GET','POST','PUT','PATCH','DELETE','HEAD','OPTIONS','TRACE'] as HttpMethod[]).map((m) => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
+              </select>
+              <input
+                autoFocus
+                value={newRequestPath}
+                onChange={(e) => { setNewRequestPath(e.target.value); setNewRequestError(null) }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') onConfirmCreateRequest()
+                  if (e.key === 'Escape') setShowCreateRequestModal(false)
+                }}
+                placeholder="/resource/{id}"
+                className="flex-1 rounded-lg border border-surface-border bg-surface-lower px-3 py-2 text-sm text-slate-100 outline-none focus:border-primary/60 font-mono"
+              />
+            </div>
+            {newRequestError ? (
+              <p className="mt-2 text-xs text-red-400">{newRequestError}</p>
+            ) : null}
+            <div className="mt-3 flex justify-end gap-2">
+              <button
+                className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg border border-surface-border text-slate-400 hover:bg-surface-raised hover:text-slate-100 transition-colors"
+                onClick={() => setShowCreateRequestModal(false)}
+              >
+                Cancel
+              </button>
+              <button
+                className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg bg-primary text-white hover:bg-primary/80 disabled:opacity-40"
+                disabled={newRequestPath.trim().length === 0}
+                onClick={onConfirmCreateRequest}
+              >
+                Add Request
               </button>
             </div>
           </div>
