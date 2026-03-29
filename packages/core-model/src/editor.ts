@@ -94,6 +94,24 @@ export function buildUpdatedDocument(
     }
   }
 
+  // Add any new operations that are not yet present in the document paths
+  for (const op of operations) {
+    const lowerMethod = op.method.toLowerCase()
+    if (!updatedPaths[op.path]) {
+      updatedPaths[op.path] = {}
+    }
+    if (!updatedPaths[op.path][lowerMethod]) {
+      const newOp: Record<string, unknown> = {}
+      if (op.operationId) newOp['operationId'] = op.operationId
+      if (op.summary) newOp['summary'] = op.summary
+      if (op.description) newOp['description'] = op.description
+      if (op.tags.length > 0) newOp['tags'] = op.tags
+      // responses is required by OpenAPI 3 spec
+      newOp['responses'] = { '200': { description: 'OK' } }
+      updatedPaths[op.path][lowerMethod] = newOp
+    }
+  }
+
   const updatedDocument = { ...document, paths: updatedPaths }
   return JSON.stringify(updatedDocument, null, 2) + '\n'
 }
