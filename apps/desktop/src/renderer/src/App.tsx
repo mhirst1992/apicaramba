@@ -8,6 +8,7 @@ import type {
   FolderNode,
   OperationRef,
   OperationDetail,
+  HttpMethod,
   SchemaDetail,
   SchemaUsageTag,
   SchemaPropertyDetail,
@@ -104,7 +105,7 @@ export default function App(): React.JSX.Element {
   }, [editorState, editedOps])
 
   const selectedOperation = React.useMemo(
-    () => mergedOperations.find((op) => (op.sourceKey ?? op.key) === selectedOpKey) ?? null,
+    () => mergedOperations.find((op) => (op.sourceKey ?? op.key) === selectedOpKey || op.key === selectedOpKey) ?? null,
     [mergedOperations, selectedOpKey]
   )
 
@@ -546,6 +547,57 @@ export default function App(): React.JSX.Element {
     })
   }
 
+  function parseOperationKey(operationKey: string): { method: HttpMethod; path: string } | null {
+    const separatorIndex = operationKey.indexOf(':')
+    if (separatorIndex <= 0) {
+      return null
+    }
+
+    return {
+      method: operationKey.slice(0, separatorIndex) as HttpMethod,
+      path: operationKey.slice(separatorIndex + 1)
+    }
+  }
+
+  function syncOperationRefInFolder(
+    folder: FolderNode,
+    fromMethod: HttpMethod,
+    fromPath: string,
+    toMethod: HttpMethod,
+    toPath: string
+  ): boolean {
+    const operation = folder.operations.find((ref) => ref.method === fromMethod && ref.path === fromPath)
+    if (operation) {
+      operation.method = toMethod
+      operation.path = toPath
+      return true
+    }
+
+    for (const child of folder.children) {
+      if (syncOperationRefInFolder(child, fromMethod, fromPath, toMethod, toPath)) {
+        return true
+      }
+    }
+
+    return false
+  }
+
+  function syncOperationRefInStructure(draft: ApiStructure, sourceKey: string, toMethod: HttpMethod, toPath: string): void {
+    const source = parseOperationKey(sourceKey)
+    if (!source) {
+      return
+    }
+
+    const inUngrouped = draft.ungrouped.find((ref) => ref.method === source.method && ref.path === source.path)
+    if (inUngrouped) {
+      inUngrouped.method = toMethod
+      inUngrouped.path = toPath
+      return
+    }
+
+    syncOperationRefInFolder(draft.rootFolder, source.method, source.path, toMethod, toPath)
+  }
+
   function onCreateFolder(): void {
     if (!editorState) return
     setNewFolderName('')
@@ -834,6 +886,9 @@ export default function App(): React.JSX.Element {
 
   function onOperationChange(updated: OperationDetail): void {
     const sourceKey = updated.sourceKey ?? updated.key
+    updateStructure((draft) => {
+      syncOperationRefInStructure(draft, sourceKey, updated.method, updated.path)
+    })
     setEditedOps((prev) => ({ ...prev, [sourceKey]: { ...updated, sourceKey } }))
     setSaveStatus('idle')
   }
@@ -1029,7 +1084,7 @@ export default function App(): React.JSX.Element {
                     <EndpointTree
                       structure={editorState.structure}
                       selectedFolderId={selectedFolderId}
-                      selectedOperationKey={selectedOpKey}
+                      selectedOperationKey={selectedOperation ? `${selectedOperation.method}:${selectedOperation.path}` : selectedOpKey}
                       onSelectFolder={onSelectFolder}
                       onSelectOperation={onSelectOperation}
                       schemas={mergedSchemas}
