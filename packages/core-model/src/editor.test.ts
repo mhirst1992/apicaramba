@@ -89,6 +89,58 @@ describe('loadApiEditor', () => {
       await rm(tempRoot, { recursive: true, force: true })
     }
   })
+
+  it('loads existing structure saved under legacy directory-based API id', async () => {
+    const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'apicaramba-editor-legacy-id-'))
+    const apiDir = path.join(tempRoot, 'apis', 'test')
+    const openapiPath = path.join(apiDir, 'custom-api.json')
+    const toolDir = path.join(tempRoot, '.api-tool')
+
+    try {
+      await mkdir(apiDir, { recursive: true })
+      await mkdir(toolDir, { recursive: true })
+      await writeFile(openapiPath, MINIMAL_OPENAPI, 'utf8')
+
+      await writeFile(
+        path.join(toolDir, 'structure.json'),
+        JSON.stringify(
+          {
+            version: '1',
+            apis: [
+              {
+                id: 'apis__test',
+                name: 'Legacy API',
+                path: 'apis/test',
+                rootFolder: {
+                  id: 'apis__test__root',
+                  name: 'root',
+                  children: [
+                    {
+                      id: 'folder-1',
+                      name: 'Grouped',
+                      children: [],
+                      operations: []
+                    }
+                  ],
+                  operations: []
+                },
+                ungrouped: []
+              }
+            ]
+          },
+          null,
+          2
+        ),
+        'utf8'
+      )
+
+      const { structure } = await loadApiEditor(tempRoot, 'apis/test/custom-api.json')
+      expect(structure.rootFolder.children).toHaveLength(1)
+      expect(structure.rootFolder.children[0]?.name).toBe('Grouped')
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true })
+    }
+  })
 })
 
 describe('buildUpdatedDocument', () => {

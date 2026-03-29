@@ -19,7 +19,7 @@ export interface OperationDetail {
 
 export interface LoadApiEditorRequest {
   workspaceRootPath: string
-  /** Relative path from workspace root, e.g. "apis/payments/openapi.json" */
+  /** Relative path from workspace root, e.g. "apis/payments/payments-spec.json" */
   openapiRelativePath: string
 }
 

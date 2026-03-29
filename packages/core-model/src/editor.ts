@@ -41,13 +41,14 @@ export async function loadApiEditor(
   const document = JSON.parse(raw) as OpenApiDocument
 
   const operations = extractOperationDetails(document)
-  const apiId = toId(path.dirname(openapiRelativePath) || openapiRelativePath)
+  const apiId = toId(openapiRelativePath)
+  const legacyApiId = toId(path.dirname(openapiRelativePath) || openapiRelativePath)
   const apiName =
     typeof document.info?.title === 'string' && document.info.title.trim().length > 0
       ? document.info.title
       : path.basename(path.dirname(absOpenapiPath))
 
-  const existingStructure = await tryLoadStructure(workspaceRoot, apiId)
+  const existingStructure = await tryLoadStructure(workspaceRoot, apiId, legacyApiId)
   const structure = existingStructure ?? buildUngroupedStructure(apiId, apiName, openapiRelativePath, operations)
 
   return { structure, operations }
@@ -193,14 +194,15 @@ function buildUngroupedStructure(
 
 async function tryLoadStructure(
   workspaceRoot: string,
-  apiId: string
+  apiId: string,
+  legacyApiId: string
 ): Promise<ApiStructure | null> {
   const structurePath = path.join(workspaceRoot, API_TOOL_DIR, STRUCTURE_FILE)
 
   try {
     const raw = await fs.readFile(structurePath, 'utf8')
     const config = JSON.parse(raw) as StructureConfig
-    return config.apis.find((a) => a.id === apiId) ?? null
+    return config.apis.find((a) => a.id === apiId || a.id === legacyApiId) ?? null
   } catch {
     return null
   }
