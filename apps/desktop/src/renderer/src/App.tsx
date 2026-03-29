@@ -167,6 +167,21 @@ export default function App(): React.JSX.Element {
     }
   }
 
+  function onReturnHome(): void {
+    setSnapshot(null)
+    setSelectedApiId(null)
+    setEditorState(null)
+    setEditedOps({})
+    setSelectedOpKey(null)
+    setSelectedFolderId(null)
+    setValidationResult(null)
+    setSaveStatus('idle')
+    setOpenApiMenuId(null)
+    setShowEnvironmentPanel(false)
+    setOpenError(null)
+    void refreshRecentWorkspaces()
+  }
+
   async function onSelectApi(api: ApiSummary): Promise<void> {
     if (!snapshot) return
     setSelectedApiId(api.id)
@@ -483,10 +498,10 @@ export default function App(): React.JSX.Element {
           <div className="px-3 pb-3 shrink-0">
             <button
               className="w-full text-xs px-3 py-2 rounded-lg border border-surface-border text-slate-400 hover:bg-surface-raised hover:text-slate-200 transition-colors"
-              onClick={() => { void onOpenWorkspace() }}
+              onClick={onReturnHome}
               disabled={loading}
             >
-              {loading ? 'Opening...' : 'Switch Workspace'}
+              Switch Workspace
             </button>
           </div>
         ) : null}
