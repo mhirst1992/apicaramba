@@ -1,11 +1,11 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
-import type { HttpMethod, WorkspaceSnapshot, OperationSummary } from '@apicaramba/shared-types'
+import type { HttpMethod, WorkspaceSnapshot, OperationSummary, ApiSummary } from '@apicaramba/shared-types'
 import swagger2openapi from 'swagger2openapi'
 
 export { loadApiEditor, buildUpdatedDocument, saveStructure } from './editor.js'
 
-const OPENAPI_FILE = 'openapi.json'
+const JSON_FILE_EXTENSION = '.json'
 const OPENAPI_METHODS = ['get', 'post', 'put', 'patch', 'delete', 'head', 'options', 'trace'] as const
 const IGNORED_DIRECTORIES = new Set(['.git', 'node_modules', '.api-tool'])
 
@@ -50,11 +50,13 @@ const swaggerConverter = swagger2openapi as unknown as Swagger2OpenApiConverter
 
 export async function loadWorkspaceSnapshot(rootPath: string): Promise<WorkspaceSnapshot> {
 	const absoluteRoot = path.resolve(rootPath)
-	const openapiFiles = await findOpenApiFiles(absoluteRoot)
+	const jsonFiles = await findJsonFiles(absoluteRoot)
 
-	const apis = await Promise.all(
-		openapiFiles.map(async (openapiPath) => buildApiSummary(absoluteRoot, openapiPath))
+	const summaries = await Promise.all(
+		jsonFiles.map(async (candidatePath) => buildApiSummary(absoluteRoot, candidatePath))
 	)
+
+	const apis = summaries.filter((summary): summary is ApiSummary => summary !== null)
 
 	apis.sort((a, b) => a.path.localeCompare(b.path))
 
@@ -68,7 +70,7 @@ export async function loadWorkspaceSnapshot(rootPath: string): Promise<Workspace
 	}
 }
 
-async function findOpenApiFiles(rootPath: string): Promise<string[]> {
+async function findJsonFiles(rootPath: string): Promise<string[]> {
 	const results: string[] = []
 
 	async function walk(currentPath: string): Promise<void> {
@@ -84,7 +86,7 @@ async function findOpenApiFiles(rootPath: string): Promise<string[]> {
 				continue
 			}
 
-			if (entry.isFile() && entry.name.toLowerCase() === OPENAPI_FILE) {
+			if (entry.isFile() && entry.name.toLowerCase().endsWith(JSON_FILE_EXTENSION)) {
 				results.push(path.join(currentPath, entry.name))
 			}
 		}
@@ -94,24 +96,34 @@ async function findOpenApiFiles(rootPath: string): Promise<string[]> {
 	return results
 }
 
-async function buildApiSummary(workspaceRoot: string, openapiAbsolutePath: string) {
-	const raw = await fs.readFile(openapiAbsolutePath, 'utf8')
-	const parsedDocument = JSON.parse(raw) as OpenApiDocument
-	const document = await normalizeToOpenApi3(parsedDocument, openapiAbsolutePath)
+async function buildApiSummary(workspaceRoot: string, candidateAbsolutePath: string): Promise<ApiSummary | null> {
+	let parsedDocument: OpenApiDocument
+
+	try {
+		const raw = await fs.readFile(candidateAbsolutePath, 'utf8')
+		parsedDocument = JSON.parse(raw) as OpenApiDocument
+	} catch {
+		return null
+	}
+
+	const document = await normalizeToOpenApi3(parsedDocument)
+	if (!document) {
+		return null
+	}
 
 	const openapiVersion = typeof document.openapi === 'string' ? document.openapi : ''
 	if (!openapiVersion.startsWith('3.')) {
-		throw new Error(`Unsupported OpenAPI version in ${openapiAbsolutePath}`)
+		return null
 	}
 
-	const apiDirectory = path.dirname(openapiAbsolutePath)
+	const apiDirectory = path.dirname(candidateAbsolutePath)
 	const relativeApiPath = normalizeRelativePath(path.relative(workspaceRoot, apiDirectory))
-	const relativeOpenapiPath = normalizeRelativePath(path.relative(workspaceRoot, openapiAbsolutePath))
+	const relativeOpenapiPath = normalizeRelativePath(path.relative(workspaceRoot, candidateAbsolutePath))
 
 	const operations = collectOperations(document.paths)
 
 	return {
-		id: toId(relativeApiPath || relativeOpenapiPath),
+		id: toId(relativeOpenapiPath),
 		name:
 			typeof document.info?.title === 'string' && document.info.title.trim().length > 0
 				? document.info.title
@@ -126,9 +138,8 @@ async function buildApiSummary(workspaceRoot: string, openapiAbsolutePath: strin
 }
 
 async function normalizeToOpenApi3(
-	document: OpenApiDocument,
-	openapiAbsolutePath: string
-): Promise<OpenApiDocument> {
+	document: OpenApiDocument
+): Promise<OpenApiDocument | null> {
 	const openapiVersion = typeof document.openapi === 'string' ? document.openapi : ''
 	if (openapiVersion.startsWith('3.')) {
 		return document
@@ -136,7 +147,7 @@ async function normalizeToOpenApi3(
 
 	const swaggerVersion = typeof document.swagger === 'string' ? document.swagger : ''
 	if (swaggerVersion.length === 0) {
-		throw new Error(`Unsupported OpenAPI version in ${openapiAbsolutePath}`)
+		return null
 	}
 
 	const sourceForConversion = coerceSwaggerVersionForConversion(document)
@@ -149,12 +160,12 @@ async function normalizeToOpenApi3(
 		})
 
 		if (!isObject(converted.openapi)) {
-			throw new Error('Conversion result was empty.')
+			return null
 		}
 
 		return converted.openapi as OpenApiDocument
 	} catch {
-		throw new Error(`Failed to convert Swagger 2.0 document in ${openapiAbsolutePath}`)
+		return null
 	}
 }
 

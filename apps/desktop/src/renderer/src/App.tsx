@@ -886,7 +886,7 @@ function EmptyState(): React.JSX.Element {
       <div className="space-y-2">
         <h2 className="text-xl font-bold tracking-tight">Load your workspace</h2>
         <p className="text-sm text-slate-400 leading-relaxed">
-          {'{api:caramba}'} scans your folder for openapi.json files and shows operations by API.
+          {'{api:caramba}'} scans your folder for JSON files and loads those that are valid OpenAPI documents.
         </p>
       </div>
     </div>

@@ -13,14 +13,14 @@ export type HttpMethod =
 
 /**
  * A reference to an API within a workspace.
- * Points to its directory and canonical openapi.json location.
+ * Points to its directory and source OpenAPI JSON location.
  */
 export interface ApiReference {
   id: string
   name: string
   /** Relative path to the API directory from workspace root. e.g. "apis/payments" */
   path: string
-  /** Relative path to the openapi.json. e.g. "apis/payments/openapi.json" */
+  /** Relative path to the OpenAPI source JSON. e.g. "apis/payments/payments-spec.json" */
   openapiPath: string
 }
 
@@ -29,7 +29,7 @@ export interface ApiReference {
  */
 export interface OperationRef {
   id: string
-  /** The operationId from openapi.json, if present. */
+  /** The operationId from the OpenAPI document, if present. */
   operationId: string | null
   method: HttpMethod
   /** The path template. e.g. "/payments/{id}" */
