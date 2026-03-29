@@ -423,7 +423,7 @@ async function createApiFolder(
   workspaceRootPath: string,
   baseFolderName: string,
   apiName: string
-): Promise<void> {
+): Promise<string> {
   const folderName = await resolveUniqueApiFolderName(workspaceRootPath, baseFolderName)
   const apiPath = join(workspaceRootPath, folderName)
   const apiDoc: NewApiDocument = {
@@ -437,15 +437,21 @@ async function createApiFolder(
 
   await fs.mkdir(apiPath, { recursive: false })
   await writeJsonFile(join(apiPath, 'openapi.json'), apiDoc)
+
+  return `${folderName}/openapi.json`
 }
 
 async function createWorkspaceBootstrapFiles(
   workspacePath: string,
   firstApiName: string
 ): Promise<void> {
-  await createApiFolder(workspacePath, slugifyFileStem(firstApiName), firstApiName)
+  const firstApiOpenapiRelativePath = await createApiFolder(
+    workspacePath,
+    slugifyFileStem(firstApiName),
+    firstApiName
+  )
 
-  await saveEnvironmentsConfig(workspacePath, {
+  await saveEnvironmentsConfig(workspacePath, firstApiOpenapiRelativePath, {
     version: '1.0.0',
     activeEnvironmentId: 'default',
     environments: [
@@ -535,7 +541,11 @@ async function handleSaveApiEditor(request: SaveApiEditorRequest): Promise<SaveA
 
     // Persist structure (creates .api-tool/ if not present)
     const migratedStructure = migrateStructureForPath(request.structure, targetRelativePath)
-    await saveStructure(request.workspaceRootPath, migratedStructure, [request.structure.id])
+    await saveStructure(
+      request.workspaceRootPath,
+      targetRelativePath,
+      migratedStructure
+    )
 
     const snapshot = await loadWorkspaceSnapshot(request.workspaceRootPath)
 
@@ -550,7 +560,10 @@ async function loadEnvironments(
   request: LoadEnvironmentsRequest
 ): Promise<LoadEnvironmentsResult> {
   try {
-    const config = await loadEnvironmentsConfig(request.workspaceRootPath)
+    const config = await loadEnvironmentsConfig(
+      request.workspaceRootPath,
+      request.openapiRelativePath
+    )
     return { status: 'loaded', config }
   } catch (error) {
     return {
@@ -564,7 +577,11 @@ async function saveEnvironments(
   request: SaveEnvironmentsRequest
 ): Promise<SaveEnvironmentsResult> {
   try {
-    const config = await saveEnvironmentsConfig(request.workspaceRootPath, request.config)
+    const config = await saveEnvironmentsConfig(
+      request.workspaceRootPath,
+      request.openapiRelativePath,
+      request.config
+    )
     return { status: 'saved', config }
   } catch (error) {
     return {

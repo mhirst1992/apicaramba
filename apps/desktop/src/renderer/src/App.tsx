@@ -117,9 +117,12 @@ export default function App(): React.JSX.Element {
     setSelectedFolderId(null)
     setSaveStatus('idle')
     setValidationResult(null)
-    await loadEnvironmentsForWorkspace(snapshotToLoad.workspace.rootPath)
     if (snapshotToLoad.apis[0]) {
+      await loadEnvironmentsForApi(snapshotToLoad.workspace.rootPath, snapshotToLoad.apis[0].openapiPath)
       await loadEditorForApi(snapshotToLoad.workspace.rootPath, snapshotToLoad.apis[0])
+    } else {
+      setEnvironmentsConfig(null)
+      setEnvironmentsDraft(null)
     }
   }
 
@@ -249,16 +252,23 @@ export default function App(): React.JSX.Element {
     setSelectedApiId(api.id)
     setValidationResult(null)
     setSelectedFolderId(null)
+    await loadEnvironmentsForApi(snapshot.workspace.rootPath, api.openapiPath)
     await loadEditorForApi(snapshot.workspace.rootPath, api)
   }
 
-  async function loadEnvironmentsForWorkspace(rootPath: string): Promise<void> {
+  async function loadEnvironmentsForApi(
+    rootPath: string,
+    openapiRelativePath: string
+  ): Promise<void> {
     setEnvironmentsLoading(true)
     setEnvironmentsError(null)
     setEnvironmentsMessage(null)
 
     try {
-      const result = await window.appBridge.loadEnvironments({ workspaceRootPath: rootPath })
+      const result = await window.appBridge.loadEnvironments({
+        workspaceRootPath: rootPath,
+        openapiRelativePath
+      })
       if (result.status === 'error') {
         setEnvironmentsError(result.message)
         setEnvironmentsConfig(null)
@@ -290,7 +300,8 @@ export default function App(): React.JSX.Element {
   }
 
   async function onSaveEnvironments(): Promise<void> {
-    if (!snapshot || !environmentsDraft) {
+    const openapiRelativePath = editorState?.api.openapiPath ?? selectedApi?.openapiPath ?? null
+    if (!snapshot || !environmentsDraft || !openapiRelativePath) {
       return
     }
 
@@ -299,6 +310,7 @@ export default function App(): React.JSX.Element {
     try {
       const result = await window.appBridge.saveEnvironments({
         workspaceRootPath: snapshot.workspace.rootPath,
+        openapiRelativePath,
         config: environmentsDraft
       })
 

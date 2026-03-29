@@ -41,6 +41,8 @@ export interface EnvironmentsConfig {
 
 export interface LoadEnvironmentsRequest {
   workspaceRootPath: string
+  /** Relative path to the selected API OpenAPI source file. */
+  openapiRelativePath: string
 }
 
 export type LoadEnvironmentsResult =
@@ -49,6 +51,8 @@ export type LoadEnvironmentsResult =
 
 export interface SaveEnvironmentsRequest {
   workspaceRootPath: string
+  /** Relative path to the selected API OpenAPI source file. */
+  openapiRelativePath: string
   config: EnvironmentsConfig
 }
 
