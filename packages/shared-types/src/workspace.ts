@@ -37,6 +37,16 @@ export interface CreateWorkspaceRequest {
   name: string
 }
 
+export interface RecentWorkspace {
+  name: string
+  rootPath: string
+  lastOpenedAt: string
+}
+
+export interface OpenRecentWorkspaceRequest {
+  rootPath: string
+}
+
 export type OpenWorkspaceResult =
   | { status: 'cancelled' }
   | { status: 'selected'; snapshot: WorkspaceSnapshot }
@@ -44,5 +54,13 @@ export type OpenWorkspaceResult =
 
 export type CreateWorkspaceResult =
   | { status: 'cancelled' }
+  | { status: 'selected'; snapshot: WorkspaceSnapshot }
+  | { status: 'error'; message: string }
+
+export type LoadRecentWorkspacesResult =
+  | { status: 'loaded'; workspaces: RecentWorkspace[] }
+  | { status: 'error'; message: string }
+
+export type OpenRecentWorkspaceResult =
   | { status: 'selected'; snapshot: WorkspaceSnapshot }
   | { status: 'error'; message: string }

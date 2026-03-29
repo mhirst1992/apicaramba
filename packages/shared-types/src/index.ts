@@ -5,7 +5,11 @@ export type {
   WorkspaceSnapshot,
   OpenWorkspaceResult,
   CreateWorkspaceRequest,
-  CreateWorkspaceResult
+  CreateWorkspaceResult,
+  RecentWorkspace,
+  OpenRecentWorkspaceRequest,
+  LoadRecentWorkspacesResult,
+  OpenRecentWorkspaceResult
 } from './workspace.js'
 export type {
   HttpMethod,
