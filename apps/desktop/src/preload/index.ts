@@ -6,6 +6,8 @@ import type {
   LoadRecentWorkspacesResult,
   OpenRecentWorkspaceRequest,
   OpenRecentWorkspaceResult,
+  CreateApiRequest,
+  CreateApiResult,
   ValidateOpenApiRequest,
   ValidateOpenApiResult,
   LoadApiEditorRequest,
@@ -34,6 +36,7 @@ export interface AppBridge {
   createWorkspace: (request: CreateWorkspaceRequest) => Promise<CreateWorkspaceResult>
   loadRecentWorkspaces: () => Promise<LoadRecentWorkspacesResult>
   openRecentWorkspace: (request: OpenRecentWorkspaceRequest) => Promise<OpenRecentWorkspaceResult>
+  createApi: (request: CreateApiRequest) => Promise<CreateApiResult>
   validateOpenApi: (request: ValidateOpenApiRequest) => Promise<ValidateOpenApiResult>
   loadApiEditor: (request: LoadApiEditorRequest) => Promise<LoadApiEditorResult>
   saveApiEditor: (request: SaveApiEditorRequest) => Promise<SaveApiEditorResult>
@@ -62,6 +65,8 @@ const bridge: AppBridge = {
     ipcRenderer.invoke('workspace:list-recent') as Promise<LoadRecentWorkspacesResult>,
   openRecentWorkspace: (request: OpenRecentWorkspaceRequest) =>
     ipcRenderer.invoke('workspace:open-recent', request) as Promise<OpenRecentWorkspaceResult>,
+  createApi: (request: CreateApiRequest) =>
+    ipcRenderer.invoke('workspace:create-api', request) as Promise<CreateApiResult>,
   validateOpenApi: (request: ValidateOpenApiRequest) =>
     ipcRenderer.invoke('openapi:validate', request) as Promise<ValidateOpenApiResult>,
   loadApiEditor: (request: LoadApiEditorRequest) =>

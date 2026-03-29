@@ -47,6 +47,11 @@ export interface OpenRecentWorkspaceRequest {
   rootPath: string
 }
 
+export interface CreateApiRequest {
+  workspaceRootPath: string
+  apiName: string
+}
+
 export type OpenWorkspaceResult =
   | { status: 'cancelled' }
   | { status: 'selected'; snapshot: WorkspaceSnapshot }
@@ -63,4 +68,8 @@ export type LoadRecentWorkspacesResult =
 
 export type OpenRecentWorkspaceResult =
   | { status: 'selected'; snapshot: WorkspaceSnapshot }
+  | { status: 'error'; message: string }
+
+export type CreateApiResult =
+  | { status: 'created'; snapshot: WorkspaceSnapshot }
   | { status: 'error'; message: string }

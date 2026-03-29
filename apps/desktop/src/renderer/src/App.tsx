@@ -64,6 +64,8 @@ export default function App(): React.JSX.Element {
   const [showCreateWorkspaceModal, setShowCreateWorkspaceModal] = React.useState(false)
   const [newWorkspaceName, setNewWorkspaceName] = React.useState('')
   const [recentWorkspaces, setRecentWorkspaces] = React.useState<RecentWorkspace[]>([])
+  const [showCreateApiModal, setShowCreateApiModal] = React.useState(false)
+  const [newApiName, setNewApiName] = React.useState('')
 
   const selectedApi = React.useMemo(
     () => snapshot?.apis.find((a) => a.id === selectedApiId) ?? null,
@@ -162,6 +164,36 @@ export default function App(): React.JSX.Element {
 
       await initializeWorkspace(result.snapshot)
       await refreshRecentWorkspaces()
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function onCreateApi(): Promise<void> {
+    if (!snapshot) return
+
+    const apiName = newApiName.trim()
+    if (!apiName) {
+      setOpenError('API name is required.')
+      return
+    }
+
+    setLoading(true)
+    setOpenError(null)
+    try {
+      const result = await window.appBridge.createApi({
+        workspaceRootPath: snapshot.workspace.rootPath,
+        apiName
+      })
+
+      if (result.status === 'error') {
+        setOpenError(result.message)
+        return
+      }
+
+      setShowCreateApiModal(false)
+      setNewApiName('')
+      await initializeWorkspace(result.snapshot)
     } finally {
       setLoading(false)
     }
@@ -495,13 +527,24 @@ export default function App(): React.JSX.Element {
           ) : null}
         </div>
         {snapshot ? (
-          <div className="px-3 pb-3 shrink-0">
+          <div className="px-3 pb-3 shrink-0 flex gap-2">
             <button
-              className="w-full text-xs px-3 py-2 rounded-lg border border-surface-border text-slate-400 hover:bg-surface-raised hover:text-slate-200 transition-colors"
+              className="w-1/2 text-xs px-3 py-2 rounded-lg border border-surface-border text-slate-400 hover:bg-surface-raised hover:text-slate-200 transition-colors disabled:opacity-40"
               onClick={onReturnHome}
               disabled={loading}
             >
               Switch Workspace
+            </button>
+            <button
+              className="w-1/2 text-xs px-3 py-2 rounded-lg border border-primary/35 text-slate-200 hover:bg-primary/15 transition-colors disabled:opacity-40"
+              onClick={() => {
+                setOpenError(null)
+                setNewApiName('')
+                setShowCreateApiModal(true)
+              }}
+              disabled={loading}
+            >
+              New API
             </button>
           </div>
         ) : null}
@@ -727,6 +770,50 @@ export default function App(): React.JSX.Element {
                 className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg bg-primary text-white hover:bg-primary/80 disabled:opacity-40"
                 disabled={newWorkspaceName.trim().length === 0 || loading}
                 onClick={() => { void onCreateWorkspace() }}
+              >
+                {loading ? 'Creating...' : 'Create'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {showCreateApiModal ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-sm rounded-xl border border-surface-border bg-surface-base p-4 shadow-xl">
+            <h3 className="text-sm font-semibold text-slate-100">Create New API</h3>
+            <p className="mt-1 text-xs text-slate-400">
+              Enter an API name. It will be created as a JSON file in your workspace root.
+            </p>
+            <input
+              autoFocus
+              value={newApiName}
+              onChange={(event) => setNewApiName(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  void onCreateApi()
+                }
+                if (event.key === 'Escape') {
+                  setShowCreateApiModal(false)
+                }
+              }}
+              placeholder="Payments API"
+              className="mt-3 w-full rounded-lg border border-surface-border bg-surface-lower px-3 py-2 text-sm text-slate-100 outline-none focus:border-primary/60"
+            />
+            <div className="mt-3 flex justify-end gap-2">
+              <button
+                className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg border border-surface-border text-slate-400 hover:bg-surface-raised hover:text-slate-100 transition-colors"
+                onClick={() => {
+                  setShowCreateApiModal(false)
+                  setNewApiName('')
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg bg-primary text-white hover:bg-primary/80 disabled:opacity-40"
+                disabled={newApiName.trim().length === 0 || loading}
+                onClick={() => { void onCreateApi() }}
               >
                 {loading ? 'Creating...' : 'Create'}
               </button>
