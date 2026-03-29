@@ -2,6 +2,7 @@ import type { HttpMethod } from './api.js'
 import type { ApiStructure } from './api.js'
 import type { OpenApiValidationIssue } from './validation.js'
 import type { WorkspaceSnapshot } from './workspace.js'
+import type { ParameterLocation } from './environments.js'
 
 /**
  * A single operation with all fields needed for the editor panel.
@@ -28,6 +29,19 @@ export interface OperationDetail {
   requestBodyRequired: boolean
   /** Response schema assignment by status code, e.g. 200 -> PetResponse, 404 -> ErrorResponse. */
   responseSchemas: ResponseSchemaAssignment[]
+  /** Request-level custom parameters stored specifically against this operation (not in the global environment). */
+  customParameters?: RequestCustomParameter[]
+}
+
+/**
+ * A parameter defined at request level, stored with the operation rather than in the global environment.
+ */
+export interface RequestCustomParameter {
+  id: string
+  name: string
+  in: ParameterLocation
+  description: string
+  required: boolean
 }
 
 export interface ResponseSchemaAssignment {

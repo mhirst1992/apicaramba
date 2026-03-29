@@ -8,6 +8,7 @@ import type {
   StructureConfig,
   OperationDetail,
   ResponseSchemaAssignment,
+  RequestCustomParameter,
   SchemaDetail,
   SchemaPropertyDetail,
   SchemaPropertyType,
@@ -125,6 +126,9 @@ export async function buildUpdatedDocument(
         ...(edited.requestBodyMediaType.trim() !== ''
           ? { requestBody: buildOpenApiRequestBody(edited, operation, schemasByName) }
           : {}),
+        ...(edited.customParameters != null && edited.customParameters.length > 0
+          ? { 'x-apicaramba-custom-parameters': edited.customParameters }
+          : {}),
         responses: buildOpenApiResponses(edited, operation, schemasByName)
       }
 
@@ -135,6 +139,7 @@ export async function buildUpdatedDocument(
       if (edited.tags.length === 0) delete op['tags']
       if (edited.parameterIds.length === 0) delete op['parameters']
       if (edited.requestBodyMediaType.trim() === '') delete op['requestBody']
+      if (edited.customParameters == null || edited.customParameters.length === 0) delete op['x-apicaramba-custom-parameters']
     }
   }
 
@@ -154,6 +159,7 @@ export async function buildUpdatedDocument(
       if (op.requestBodyMediaType.trim() !== '') {
         newOp['requestBody'] = buildOpenApiRequestBody(op, null, schemasByName)
       }
+      if (op.customParameters != null && op.customParameters.length > 0) newOp['x-apicaramba-custom-parameters'] = op.customParameters
       newOp['responses'] = buildOpenApiResponses(op, null, schemasByName)
       updatedPaths[op.path][lowerMethod] = newOp
     }
@@ -221,7 +227,8 @@ function extractOperationDetails(document: OpenApiDocument): OperationDetail[] {
         requestBodyMediaType: requestSchema.mediaType,
         requestBodySchemaName: requestSchema.schemaName,
         requestBodyRequired: requestSchema.required,
-        responseSchemas
+        responseSchemas,
+        customParameters: extractCustomParameters(operation)
       })
     }
   }
@@ -533,6 +540,24 @@ function extractResponseSchemas(operation: Record<string, unknown>): ResponseSch
 
   assignments.sort((a, b) => a.responseCode.localeCompare(b.responseCode))
   return assignments
+}
+
+function extractCustomParameters(operation: Record<string, unknown>): RequestCustomParameter[] {
+  const raw = operation['x-apicaramba-custom-parameters']
+  if (!Array.isArray(raw)) return []
+
+  return raw
+    .filter((item): item is Record<string, unknown> => !!item && typeof item === 'object')
+    .map((item) => ({
+      id: typeof item['id'] === 'string' ? item['id'] : `custom:${Math.random().toString(36).slice(2)}`,
+      name: typeof item['name'] === 'string' ? item['name'] : '',
+      in: PARAMETER_LOCATIONS.includes(item['in'] as ParameterLocation)
+        ? (item['in'] as ParameterLocation)
+        : 'query',
+      description: typeof item['description'] === 'string' ? item['description'] : '',
+      required: item['required'] === true
+    }))
+    .filter((p) => p.name.trim() !== '')
 }
 
 function buildOpenApiResponses(

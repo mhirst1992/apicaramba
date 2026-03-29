@@ -42,6 +42,7 @@ export type {
 export type {
   OperationDetail,
   ResponseSchemaAssignment,
+  RequestCustomParameter,
   SchemaUsageTag,
   SchemaPropertyType,
   SchemaPrimitiveType,

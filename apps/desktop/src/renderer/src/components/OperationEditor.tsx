@@ -1,5 +1,5 @@
 import React from 'react'
-import type { OperationDetail, EnvironmentParameter, SchemaDetail, ResponseSchemaAssignment, HttpMethod } from '@apicaramba/shared-types'
+import type { OperationDetail, EnvironmentParameter, SchemaDetail, ResponseSchemaAssignment, HttpMethod, RequestCustomParameter, ParameterLocation } from '@apicaramba/shared-types'
 
 interface Props {
   operation: OperationDetail
@@ -52,6 +52,27 @@ export function OperationEditor({ operation, availableParameters, requestSchemas
       : [...operation.parameterIds, parameterId]
 
     update({ parameterIds: next })
+  }
+
+  function addCustomParameter(): void {
+    const newParam: RequestCustomParameter = {
+      id: `custom:${Date.now()}`,
+      name: '',
+      in: 'query',
+      description: '',
+      required: false
+    }
+    update({ customParameters: [...(operation.customParameters ?? []), newParam] })
+  }
+
+  function removeCustomParameter(id: string): void {
+    update({ customParameters: (operation.customParameters ?? []).filter((p) => p.id !== id) })
+  }
+
+  function updateCustomParameter(id: string, patch: Partial<RequestCustomParameter>): void {
+    update({
+      customParameters: (operation.customParameters ?? []).map((p) => (p.id === id ? { ...p, ...patch } : p))
+    })
   }
 
   function addRequestSchema(): void {
@@ -238,6 +259,76 @@ export function OperationEditor({ operation, availableParameters, requestSchemas
               </div>
             </div>
           )}
+        </div>
+      </Field>
+
+      <Field label="Request Parameters">
+        <div className="flex flex-col gap-2">
+          {(operation.customParameters ?? []).length > 0 ? (
+            <div className="flex flex-col gap-1.5">
+              {(operation.customParameters ?? []).map((param) => (
+                <div key={param.id} className="grid grid-cols-[80px_1fr_1fr_auto] gap-1.5 items-center">
+                  <select
+                    className="w-full bg-surface-lower border border-accent/40 rounded-lg px-2 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-accent/60"
+                    value={param.in}
+                    onChange={(e) => updateCustomParameter(param.id, { in: e.target.value as ParameterLocation })}
+                  >
+                    <option value="query">query</option>
+                    <option value="header">header</option>
+                    <option value="path">path</option>
+                    <option value="cookie">cookie</option>
+                  </select>
+                  <input
+                    type="text"
+                    className="w-full bg-surface-lower border border-accent/40 rounded-lg px-2 py-1.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-accent/60"
+                    placeholder="Name"
+                    value={param.name}
+                    onChange={(e) => updateCustomParameter(param.id, { name: e.target.value })}
+                    style={{ userSelect: 'text' }}
+                  />
+                  <input
+                    type="text"
+                    className="w-full bg-surface-lower border border-accent/40 rounded-lg px-2 py-1.5 text-xs text-slate-500 placeholder-slate-600 focus:outline-none focus:border-accent/60"
+                    placeholder="Description (optional)"
+                    value={param.description}
+                    onChange={(e) => updateCustomParameter(param.id, { description: e.target.value })}
+                    style={{ userSelect: 'text' }}
+                  />
+                  <div className="flex items-center gap-1.5">
+                    <label className="flex items-center gap-1 text-xs text-slate-500 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={param.required}
+                        onChange={(e) => updateCustomParameter(param.id, { required: e.target.checked })}
+                      />
+                      req
+                    </label>
+                    <button
+                      className="text-slate-600 hover:text-secondary transition-colors px-1"
+                      onClick={() => removeCustomParameter(param.id)}
+                      title="Remove parameter"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <polyline points="3 6 5 6 21 6"/>
+                        <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                        <path d="M10 11v6"/>
+                        <path d="M14 11v6"/>
+                        <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-slate-500">No request-level parameters defined.</p>
+          )}
+          <button
+            className="self-start text-xs text-accent hover:text-accent/80 transition-colors"
+            onClick={addCustomParameter}
+          >
+            + Add request parameter
+          </button>
         </div>
       </Field>
 
