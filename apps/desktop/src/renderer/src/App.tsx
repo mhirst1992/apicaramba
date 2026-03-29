@@ -15,6 +15,7 @@ import type {
 } from '@apicaramba/shared-types'
 import { EndpointTree } from './components/EndpointTree.js'
 import { OperationEditor } from './components/OperationEditor.js'
+import { RequestRunner } from './components/RequestRunner.js'
 
 // --- Types -------------------------------------------------------------------
 
@@ -75,6 +76,7 @@ export default function App(): React.JSX.Element {
   const [newRequestMethod, setNewRequestMethod] = React.useState<HttpMethod>('GET')
   const [newRequestPath, setNewRequestPath] = React.useState('')
   const [newRequestError, setNewRequestError] = React.useState<string | null>(null)
+  const [detailTab, setDetailTab] = React.useState<'edit' | 'run'>('edit')
 
   const selectedApi = React.useMemo(
     () => snapshot?.apis.find((a) => a.id === selectedApiId) ?? null,
@@ -837,6 +839,22 @@ export default function App(): React.JSX.Element {
                 {selectedApi?.openapiPath ?? ''}
               </span>
               <div className="flex items-center gap-2">
+                {selectedOperation ? (
+                  <div className="flex items-center gap-0.5 mr-1 rounded-lg border border-surface-border p-0.5">
+                    <button
+                      className={`px-2.5 py-0.5 text-xs font-medium rounded-md transition-colors ${detailTab === 'edit' ? 'bg-surface-raised text-slate-100' : 'text-slate-500 hover:text-slate-300'}`}
+                      onClick={() => setDetailTab('edit')}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      className={`px-2.5 py-0.5 text-xs font-medium rounded-md transition-colors ${detailTab === 'run' ? 'bg-surface-raised text-slate-100' : 'text-slate-500 hover:text-slate-300'}`}
+                      onClick={() => setDetailTab('run')}
+                    >
+                      Run
+                    </button>
+                  </div>
+                ) : null}
                 <button
                   className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg border border-surface-border text-slate-300 hover:bg-surface-raised hover:text-slate-100 disabled:opacity-40 transition-colors"
                   onClick={() => { void onValidate() }}
@@ -875,7 +893,16 @@ export default function App(): React.JSX.Element {
                 </div>
               ) : null}
               {selectedOperation && editorState ? (
-                <OperationEditor operation={selectedOperation} onChange={onOperationChange} />
+                detailTab === 'run' ? (
+                  <RequestRunner
+                    key={selectedOpKey ?? ''}
+                    operation={selectedOperation}
+                    environment={activeEnvironment}
+                    onExecute={(req) => window.appBridge.executeRequest(req)}
+                  />
+                ) : (
+                  <OperationEditor operation={selectedOperation} onChange={onOperationChange} />
+                )
               ) : editorLoading ? (
                 <EditorSkeleton />
               ) : editorState ? (

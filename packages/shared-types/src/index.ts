@@ -44,3 +44,8 @@ export type {
   SaveApiEditorRequest,
   SaveApiEditorResult
 } from './editor.js'
+export type {
+  RequestHeader,
+  ExecuteRequestRequest,
+  ExecuteRequestResult
+} from './execution.js'
