@@ -280,6 +280,31 @@ export default function App(): React.JSX.Element {
     }
   }
 
+  async function onDeleteApi(api: ApiSummary): Promise<void> {
+    if (!snapshot) return
+    if (!window.confirm('Are you sure you want to delete this resource?')) return
+
+    setLoading(true)
+    setOpenError(null)
+    try {
+      const result = await window.appBridge.deleteApi({
+        workspaceRootPath: snapshot.workspace.rootPath,
+        apiPath: api.path,
+        openapiRelativePath: api.openapiPath
+      })
+
+      if (result.status === 'error') {
+        setOpenError(result.message)
+        return
+      }
+
+      setOpenApiMenuId(null)
+      await initializeWorkspace(result.snapshot)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   function onReturnHome(): void {
     setSnapshot(null)
     setSelectedApiId(null)
@@ -725,6 +750,44 @@ export default function App(): React.JSX.Element {
     setDraggingOperationId(null)
   }
 
+  function onDeleteOperation(operation: OperationRef, folderId: string | null): void {
+    if (!editorState) return
+    if (!window.confirm('Are you sure you want to delete this resource?')) return
+
+    const operationKey = `${operation.method}:${operation.path}`
+    const matchedOperation = mergedOperations.find((candidate) => candidate.key === operationKey)
+    const sourceKey = matchedOperation?.sourceKey ?? operationKey
+
+    updateStructure((draft) => {
+      if (folderId === null) {
+        draft.ungrouped = draft.ungrouped.filter((ref) => ref.id !== operation.id)
+        return
+      }
+
+      collectAndRemoveOperation(draft.rootFolder, operation.id)
+    })
+
+    setEditorState((current) => {
+      if (!current) return current
+      return {
+        ...current,
+        operations: current.operations.filter((candidate) => (candidate.sourceKey ?? candidate.key) !== sourceKey)
+      }
+    })
+
+    setEditedOps((current) => {
+      const next = { ...current }
+      delete next[sourceKey]
+      return next
+    })
+
+    if (selectedOpKey === operationKey || selectedOpKey === sourceKey) {
+      setSelectedOpKey(null)
+    }
+
+    setSaveStatus('idle')
+  }
+
   async function onValidate(): Promise<void> {
     if (!snapshot || !selectedApi) return
     setValidating(true)
@@ -864,6 +927,70 @@ export default function App(): React.JSX.Element {
     }
   }
 
+  function removeSchemaReferencesFromOperation(operation: OperationDetail, schemaName: string): OperationDetail {
+    const nextResponseSchemas = operation.responseSchemas.filter((assignment) => assignment.schemaName !== schemaName)
+    return {
+      ...operation,
+      requestBodySchemaName: operation.requestBodySchemaName === schemaName ? '' : operation.requestBodySchemaName,
+      requestBodyMediaType: operation.requestBodySchemaName === schemaName ? '' : operation.requestBodyMediaType,
+      requestBodyRequired: operation.requestBodySchemaName === schemaName ? false : operation.requestBodyRequired,
+      responseSchemas: nextResponseSchemas
+    }
+  }
+
+  function onDeleteSchema(schemaId: string): void {
+    if (!editorState) return
+    if (!window.confirm('Are you sure you want to delete this resource?')) return
+
+    const schema = mergedSchemas.find((candidate) => candidate.id === schemaId)
+    if (!schema) return
+
+    setEditorState((current) => {
+      if (!current) return current
+
+      return {
+        ...current,
+        schemas: current.schemas.filter((candidate) => candidate.id !== schemaId),
+        operations: current.operations.map((operation) => removeSchemaReferencesFromOperation(operation, schema.name))
+      }
+    })
+
+    setEditedSchemas((current) => {
+      const next = { ...current }
+      delete next[schemaId]
+      return next
+    })
+
+    setEditedOps((current) => {
+      const next: Record<string, OperationDetail> = { ...current }
+      const sourceOperations = editorState.operations
+
+      for (const baseOperation of sourceOperations) {
+        const editKey = baseOperation.sourceKey ?? baseOperation.key
+        const operation = current[editKey] ?? baseOperation
+        const cleaned = removeSchemaReferencesFromOperation(operation, schema.name)
+
+        if (
+          cleaned.requestBodySchemaName !== operation.requestBodySchemaName
+          || cleaned.requestBodyMediaType !== operation.requestBodyMediaType
+          || cleaned.requestBodyRequired !== operation.requestBodyRequired
+          || cleaned.responseSchemas.length !== operation.responseSchemas.length
+        ) {
+          next[editKey] = cleaned
+        }
+      }
+
+      return next
+    })
+
+    if (selectedSchemaId === schemaId) {
+      const remainingSchemas = mergedSchemas.filter((candidate) => candidate.id !== schemaId)
+      setSelectedSchemaId(remainingSchemas[0]?.id ?? null)
+    }
+
+    setSaveStatus('idle')
+  }
+
   function onCreateSchema(usageTag: SchemaUsageTag, explicitName?: string): void {
     if (!editorState) return
 
@@ -984,6 +1111,10 @@ export default function App(): React.JSX.Element {
                       onCreateDefaultRequest()
                     }
                   }}
+                  onDeleteApi={() => {
+                    setOpenApiMenuId(null)
+                    void onDeleteApi(api)
+                  }}
                 />
                 {editorState && selectedApiId === api.id && expandedApiId === api.id ? (
                   <div className="mb-1 rounded-lg border border-surface-border bg-surface-base px-2 py-2">
@@ -993,10 +1124,12 @@ export default function App(): React.JSX.Element {
                       selectedOperationKey={selectedOperation ? `${selectedOperation.method}:${selectedOperation.path}` : selectedOpKey}
                       onSelectFolder={onSelectFolder}
                       onSelectOperation={onSelectOperation}
+                      onDeleteOperation={onDeleteOperation}
                       schemas={mergedSchemas}
                       selectedSchemaId={selectedSchemaId}
                       onSelectSchema={setSelectedSchemaId}
                       onCreateSchema={() => setShowCreateSchemaModal(true)}
+                      onDeleteSchema={onDeleteSchema}
                       schemaCount={mergedSchemas.length}
                       schemasFolderId={SCHEMAS_FOLDER_ID}
                       draggingOperationId={draggingOperationId}

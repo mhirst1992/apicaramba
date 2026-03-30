@@ -9,7 +9,8 @@ export function ApiDropdownCard({
   onSelect,
   onEnvironment,
   onNewFolder,
-  onNewRequest
+  onNewRequest,
+  onDeleteApi
 }: {
   api: ApiSummary
   isSelected: boolean
@@ -19,6 +20,7 @@ export function ApiDropdownCard({
   onEnvironment: () => void
   onNewFolder: () => void
   onNewRequest: () => void
+  onDeleteApi: () => void
 }): React.JSX.Element {
   return (
     <div className={`rounded-lg border ${isSelected ? 'border-primary/35 bg-primary/10' : 'border-surface-border bg-surface-base'}`}>
@@ -63,6 +65,7 @@ export function ApiDropdownCard({
           <button className="text-left text-xs px-2 py-1 rounded hover:bg-surface-raised" onClick={onEnvironment}>Environment</button>
           <button className="text-left text-xs px-2 py-1 rounded hover:bg-surface-raised" onClick={onNewFolder}>New Folder</button>
           <button className="text-left text-xs px-2 py-1 rounded hover:bg-surface-raised" onClick={onNewRequest}>New Request</button>
+          <button className="text-left text-xs px-2 py-1 rounded text-red-300 hover:bg-secondary/10" onClick={onDeleteApi}>Delete API</button>
         </div>
       ) : null}
     </div>

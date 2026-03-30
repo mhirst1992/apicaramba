@@ -13,7 +13,9 @@ export type {
   OpenRecentWorkspaceResult,
   RemoveRecentWorkspaceResult,
   CreateApiRequest,
-  CreateApiResult
+  CreateApiResult,
+  DeleteApiRequest,
+  DeleteApiResult
 } from './workspace.js'
 export type {
   HttpMethod,

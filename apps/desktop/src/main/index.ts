@@ -1,7 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain, IpcMainEvent } from 'electron'
 import { execFile } from 'node:child_process'
 import { promises as fs } from 'node:fs'
-import { dirname, join, resolve } from 'path'
+import { dirname, join, resolve, sep } from 'path'
 import { promisify } from 'node:util'
 import {
   loadWorkspaceSnapshot,
@@ -20,6 +20,8 @@ import type {
   CreateWorkspaceResult,
   CreateApiRequest,
   CreateApiResult,
+  DeleteApiRequest,
+  DeleteApiResult,
   RecentWorkspace,
   OpenRecentWorkspaceRequest,
   RemoveRecentWorkspaceRequest,
@@ -65,6 +67,12 @@ interface NewApiDocument {
 function normalizePathForCompare(input: string): string {
   const resolved = resolve(input)
   return process.platform === 'win32' ? resolved.toLowerCase() : resolved
+}
+
+function isWithinWorkspace(workspaceRootPath: string, candidatePath: string): boolean {
+  const normalizedRoot = normalizePathForCompare(resolve(workspaceRootPath))
+  const normalizedCandidate = normalizePathForCompare(resolve(candidatePath))
+  return normalizedCandidate === normalizedRoot || normalizedCandidate.startsWith(normalizedRoot + sep)
 }
 
 async function assertWorkspaceRepoRoot(workspacePath: string): Promise<void> {
@@ -389,6 +397,51 @@ async function handleCreateApi(request: CreateApiRequest): Promise<CreateApiResu
   }
 }
 
+async function handleDeleteApi(request: DeleteApiRequest): Promise<DeleteApiResult> {
+  const workspaceRootPath = request.workspaceRootPath?.trim()
+  const apiPath = request.apiPath?.trim()
+  const openapiRelativePath = request.openapiRelativePath?.trim()
+
+  if (!workspaceRootPath) {
+    return { status: 'error', message: 'Workspace path is required.' }
+  }
+
+  if (!apiPath) {
+    return { status: 'error', message: 'API path is required.' }
+  }
+
+  if (!openapiRelativePath) {
+    return { status: 'error', message: 'OpenAPI path is required.' }
+  }
+
+  try {
+    const apiAbsPath = resolve(workspaceRootPath, apiPath)
+    const openapiAbsPath = resolve(workspaceRootPath, openapiRelativePath)
+
+    if (!isWithinWorkspace(workspaceRootPath, apiAbsPath) || !isWithinWorkspace(workspaceRootPath, openapiAbsPath)) {
+      return { status: 'error', message: 'Refusing to delete paths outside the workspace.' }
+    }
+
+    const normalizedWorkspaceRoot = normalizePathForCompare(resolve(workspaceRootPath))
+    const normalizedApiPath = normalizePathForCompare(apiAbsPath)
+
+    if (normalizedApiPath === normalizedWorkspaceRoot) {
+      await fs.unlink(openapiAbsPath).catch(() => undefined)
+      await fs.rm(join(apiAbsPath, '.api-tool'), { recursive: true, force: true }).catch(() => undefined)
+    } else {
+      await fs.rm(apiAbsPath, { recursive: true, force: true })
+    }
+
+    const snapshot = await loadWorkspaceSnapshot(workspaceRootPath)
+    return { status: 'deleted', snapshot }
+  } catch (error) {
+    return {
+      status: 'error',
+      message: error instanceof Error ? error.message : 'Failed to delete API.'
+    }
+  }
+}
+
 function slugifyFileStem(input: string): string {
   const stem = input
     .trim()
@@ -621,6 +674,7 @@ app.whenReady().then(() => {
     handleRemoveRecentWorkspace(request)
   )
   ipcMain.handle('workspace:create-api', (_, request: CreateApiRequest) => handleCreateApi(request))
+  ipcMain.handle('workspace:delete-api', (_, request: DeleteApiRequest) => handleDeleteApi(request))
   ipcMain.handle('openapi:validate', (_, request: ValidateOpenApiRequest) => validateOpenApi(request))
   ipcMain.handle('openapi:load-editor', (_, request: LoadApiEditorRequest) => handleLoadApiEditor(request))
   ipcMain.handle('openapi:save-editor', (_, request: SaveApiEditorRequest) => handleSaveApiEditor(request))
@@ -657,6 +711,7 @@ app.on('will-quit', () => {
   ipcMain.removeHandler('workspace:open-recent')
   ipcMain.removeHandler('workspace:remove-recent')
   ipcMain.removeHandler('workspace:create-api')
+  ipcMain.removeHandler('workspace:delete-api')
   ipcMain.removeHandler('openapi:validate')
   ipcMain.removeHandler('openapi:load-editor')
   ipcMain.removeHandler('openapi:save-editor')

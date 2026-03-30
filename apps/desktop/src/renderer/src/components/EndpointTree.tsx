@@ -15,11 +15,13 @@ interface Props {
   selectedOperationKey: string | null
   onSelectFolder: (folderId: string | null) => void
   onSelectOperation: (operationKey: string, folderId: string | null) => void
+  onDeleteOperation: (operation: OperationRef, folderId: string | null) => void
   schemasFolderId: string
   schemas: SchemaDetail[]
   selectedSchemaId: string | null
   onSelectSchema: (schemaId: string) => void
   onCreateSchema: () => void
+  onDeleteSchema: (schemaId: string) => void
   schemaCount: number
   draggingOperationId: string | null
   onOperationDragStart: (operationId: string) => void
@@ -68,6 +70,7 @@ function OperationRow({
   selectedOperationKey,
   onSelectOperation,
   onSelectFolder,
+  onDeleteOperation,
   onDragStart,
   onDragEnd
 }: {
@@ -77,6 +80,7 @@ function OperationRow({
   selectedOperationKey: string | null
   onSelectOperation: (operationKey: string, folderId: string | null) => void
   onSelectFolder: (folderId: string | null) => void
+  onDeleteOperation: (operation: OperationRef, folderId: string | null) => void
   onDragStart: (operationId: string) => void
   onDragEnd: () => void
 }): React.JSX.Element {
@@ -85,7 +89,7 @@ function OperationRow({
 
   return (
     <div
-      className={`flex items-center gap-2 rounded-md border px-2.5 py-2 text-sm transition-colors ${
+      className={`group flex items-center gap-2 rounded-md border px-2.5 py-2 text-sm transition-colors ${
         selectedOperationKey === key
           ? 'bg-primary/15 border-primary/35 text-slate-100'
           : 'border-transparent text-slate-300 hover:bg-surface-raised'
@@ -114,6 +118,22 @@ function OperationRow({
         </span>
         <span className="inline-block max-w-full align-middle truncate text-sm text-slate-200">{operation.path}</span>
       </button>
+      <button
+        className="hidden group-hover:flex items-center text-slate-500 hover:text-red-400 shrink-0 px-0.5"
+        title="Delete request"
+        onClick={(event) => {
+          event.stopPropagation()
+          onDeleteOperation(operation, folderId)
+        }}
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="3 6 5 6 21 6"/>
+          <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+          <path d="M10 11v6"/>
+          <path d="M14 11v6"/>
+          <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+        </svg>
+      </button>
     </div>
   )
 }
@@ -125,6 +145,7 @@ function FolderRow({
   selectedOperationKey,
   onSelectFolder,
   onSelectOperation,
+  onDeleteOperation,
   draggingOperationId,
   onDropOperation,
   onOperationDragStart,
@@ -144,6 +165,7 @@ function FolderRow({
   selectedOperationKey: string | null
   onSelectFolder: (folderId: string | null) => void
   onSelectOperation: (operationKey: string, folderId: string | null) => void
+  onDeleteOperation: (operation: OperationRef, folderId: string | null) => void
   draggingOperationId: string | null
   onDropOperation: (operationId: string, folderId: string | null) => void
   onOperationDragStart: (operationId: string) => void
@@ -270,6 +292,7 @@ function FolderRow({
               selectedOperationKey={selectedOperationKey}
               onSelectOperation={onSelectOperation}
               onSelectFolder={onSelectFolder}
+              onDeleteOperation={onDeleteOperation}
               onDragStart={onOperationDragStart}
               onDragEnd={onOperationDragEnd}
             />
@@ -283,6 +306,7 @@ function FolderRow({
               selectedOperationKey={selectedOperationKey}
               onSelectFolder={onSelectFolder}
               onSelectOperation={onSelectOperation}
+              onDeleteOperation={onDeleteOperation}
               draggingOperationId={draggingOperationId}
               onDropOperation={onDropOperation}
               onOperationDragStart={onOperationDragStart}
@@ -309,11 +333,13 @@ export function EndpointTree({
   selectedOperationKey,
   onSelectFolder,
   onSelectOperation,
+  onDeleteOperation,
   schemasFolderId,
   schemas,
   selectedSchemaId,
   onSelectSchema,
   onCreateSchema,
+  onDeleteSchema,
   schemaCount,
   draggingOperationId,
   onDropOperation,
@@ -340,6 +366,7 @@ export function EndpointTree({
           selectedOperationKey={selectedOperationKey}
           onSelectFolder={onSelectFolder}
           onSelectOperation={onSelectOperation}
+          onDeleteOperation={onDeleteOperation}
           draggingOperationId={draggingOperationId}
           onDropOperation={onDropOperation}
           onOperationDragStart={onOperationDragStart}
@@ -402,6 +429,7 @@ export function EndpointTree({
               selectedOperationKey={selectedOperationKey}
               onSelectOperation={onSelectOperation}
               onSelectFolder={onSelectFolder}
+              onDeleteOperation={onDeleteOperation}
               onDragStart={onOperationDragStart}
               onDragEnd={onOperationDragEnd}
             />
@@ -441,24 +469,44 @@ export function EndpointTree({
       {schemasOpen ? (
         <div className="flex flex-col gap-1">
           {schemas.map((schema) => (
-            <button
+            <div
               key={schema.id}
-              className={`ml-[14px] rounded-md border px-2.5 py-2 text-left text-sm transition-colors ${
+              className={`group ml-[14px] flex items-center gap-1 rounded-md border px-2.5 py-2 text-left text-sm transition-colors ${
                 selectedFolderId === schemasFolderId && selectedSchemaId === schema.id
                   ? 'bg-primary/15 border-primary/35 text-slate-100'
                   : 'border-transparent text-slate-300 hover:bg-surface-raised'
               }`}
-              title={schema.name}
-              onClick={() => {
-                onSelectFolder(schemasFolderId)
-                onSelectSchema(schema.id)
-              }}
             >
-              <span className="inline-block max-w-[80%] truncate font-mono align-middle">{schema.name}</span>
-              <span className="ml-2 rounded border border-surface-border bg-surface-lower px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-slate-300">
-                {usageTagLabel(schema.usageTag)}
-              </span>
-            </button>
+              <button
+                className="flex-1 min-w-0 text-left"
+                title={schema.name}
+                onClick={() => {
+                  onSelectFolder(schemasFolderId)
+                  onSelectSchema(schema.id)
+                }}
+              >
+                <span className="inline-block max-w-[80%] truncate font-mono align-middle">{schema.name}</span>
+                <span className="ml-2 rounded border border-surface-border bg-surface-lower px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-slate-300">
+                  {usageTagLabel(schema.usageTag)}
+                </span>
+              </button>
+              <button
+                className="hidden group-hover:flex items-center text-slate-500 hover:text-red-400 shrink-0 px-0.5"
+                title="Delete schema"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  onDeleteSchema(schema.id)
+                }}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="3 6 5 6 21 6"/>
+                  <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                  <path d="M10 11v6"/>
+                  <path d="M14 11v6"/>
+                  <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+                </svg>
+              </button>
+            </div>
           ))}
           {schemas.length === 0 ? (
             <p className="ml-[14px] px-2.5 py-1 text-xs text-slate-500">No schemas yet.</p>
