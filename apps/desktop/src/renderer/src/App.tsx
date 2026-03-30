@@ -902,6 +902,70 @@ export default function App(): React.JSX.Element {
     }
   }
 
+  function removeSchemaReferencesFromOperation(operation: OperationDetail, schemaName: string): OperationDetail {
+    const nextResponseSchemas = operation.responseSchemas.filter((assignment) => assignment.schemaName !== schemaName)
+    return {
+      ...operation,
+      requestBodySchemaName: operation.requestBodySchemaName === schemaName ? '' : operation.requestBodySchemaName,
+      requestBodyMediaType: operation.requestBodySchemaName === schemaName ? '' : operation.requestBodyMediaType,
+      requestBodyRequired: operation.requestBodySchemaName === schemaName ? false : operation.requestBodyRequired,
+      responseSchemas: nextResponseSchemas
+    }
+  }
+
+  function onDeleteSchema(schemaId: string): void {
+    if (!editorState) return
+    if (!window.confirm('Are you sure you want to delete this resource?')) return
+
+    const schema = mergedSchemas.find((candidate) => candidate.id === schemaId)
+    if (!schema) return
+
+    setEditorState((current) => {
+      if (!current) return current
+
+      return {
+        ...current,
+        schemas: current.schemas.filter((candidate) => candidate.id !== schemaId),
+        operations: current.operations.map((operation) => removeSchemaReferencesFromOperation(operation, schema.name))
+      }
+    })
+
+    setEditedSchemas((current) => {
+      const next = { ...current }
+      delete next[schemaId]
+      return next
+    })
+
+    setEditedOps((current) => {
+      const next: Record<string, OperationDetail> = { ...current }
+      const sourceOperations = editorState.operations
+
+      for (const baseOperation of sourceOperations) {
+        const editKey = baseOperation.sourceKey ?? baseOperation.key
+        const operation = current[editKey] ?? baseOperation
+        const cleaned = removeSchemaReferencesFromOperation(operation, schema.name)
+
+        if (
+          cleaned.requestBodySchemaName !== operation.requestBodySchemaName
+          || cleaned.requestBodyMediaType !== operation.requestBodyMediaType
+          || cleaned.requestBodyRequired !== operation.requestBodyRequired
+          || cleaned.responseSchemas.length !== operation.responseSchemas.length
+        ) {
+          next[editKey] = cleaned
+        }
+      }
+
+      return next
+    })
+
+    if (selectedSchemaId === schemaId) {
+      const remainingSchemas = mergedSchemas.filter((candidate) => candidate.id !== schemaId)
+      setSelectedSchemaId(remainingSchemas[0]?.id ?? null)
+    }
+
+    setSaveStatus('idle')
+  }
+
   function onCreateSchema(usageTag: SchemaUsageTag, explicitName?: string): void {
     if (!editorState) return
 
@@ -1036,6 +1100,7 @@ export default function App(): React.JSX.Element {
                       selectedSchemaId={selectedSchemaId}
                       onSelectSchema={setSelectedSchemaId}
                       onCreateSchema={() => setShowCreateSchemaModal(true)}
+                      onDeleteSchema={onDeleteSchema}
                       schemaCount={mergedSchemas.length}
                       schemasFolderId={SCHEMAS_FOLDER_ID}
                       draggingOperationId={draggingOperationId}
