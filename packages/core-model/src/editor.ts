@@ -107,7 +107,10 @@ export async function buildUpdatedDocument(
 
       const key = `${method.toUpperCase()}:${pathKey}`
       const edited = opsBySourceKey.get(key)
-      if (!edited) continue
+      if (!edited) {
+        delete updatedPaths[pathKey][method]
+        continue
+      }
 
       const nextMethod = edited.method.toLowerCase()
       const nextPath = edited.path
@@ -141,6 +144,10 @@ export async function buildUpdatedDocument(
       if (edited.parameterIds.length === 0) delete op['parameters']
       if (edited.requestBodyMediaType.trim() === '') delete op['requestBody']
       if (edited.customParameters == null || edited.customParameters.length === 0) delete op['x-apicaramba-custom-parameters']
+    }
+
+    if (Object.keys(updatedPaths[pathKey]).length === 0) {
+      delete updatedPaths[pathKey]
     }
   }
 

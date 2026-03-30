@@ -725,6 +725,44 @@ export default function App(): React.JSX.Element {
     setDraggingOperationId(null)
   }
 
+  function onDeleteOperation(operation: OperationRef, folderId: string | null): void {
+    if (!editorState) return
+    if (!window.confirm('Are you sure you want to delete this resource?')) return
+
+    const operationKey = `${operation.method}:${operation.path}`
+    const matchedOperation = mergedOperations.find((candidate) => candidate.key === operationKey)
+    const sourceKey = matchedOperation?.sourceKey ?? operationKey
+
+    updateStructure((draft) => {
+      if (folderId === null) {
+        draft.ungrouped = draft.ungrouped.filter((ref) => ref.id !== operation.id)
+        return
+      }
+
+      collectAndRemoveOperation(draft.rootFolder, operation.id)
+    })
+
+    setEditorState((current) => {
+      if (!current) return current
+      return {
+        ...current,
+        operations: current.operations.filter((candidate) => (candidate.sourceKey ?? candidate.key) !== sourceKey)
+      }
+    })
+
+    setEditedOps((current) => {
+      const next = { ...current }
+      delete next[sourceKey]
+      return next
+    })
+
+    if (selectedOpKey === operationKey || selectedOpKey === sourceKey) {
+      setSelectedOpKey(null)
+    }
+
+    setSaveStatus('idle')
+  }
+
   async function onValidate(): Promise<void> {
     if (!snapshot || !selectedApi) return
     setValidating(true)
@@ -993,6 +1031,7 @@ export default function App(): React.JSX.Element {
                       selectedOperationKey={selectedOperation ? `${selectedOperation.method}:${selectedOperation.path}` : selectedOpKey}
                       onSelectFolder={onSelectFolder}
                       onSelectOperation={onSelectOperation}
+                      onDeleteOperation={onDeleteOperation}
                       schemas={mergedSchemas}
                       selectedSchemaId={selectedSchemaId}
                       onSelectSchema={setSelectedSchemaId}
