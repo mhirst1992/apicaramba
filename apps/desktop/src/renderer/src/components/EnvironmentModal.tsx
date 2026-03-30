@@ -16,6 +16,7 @@ interface EnvironmentModalProps {
   onAddParameter: () => void
   onUpdateParameter: (parameterId: string, patch: Partial<EnvironmentParameter>) => void
   onRemoveParameter: (parameterId: string) => void
+  onRenameApi?: () => void
 }
 
 export function EnvironmentModal(props: EnvironmentModalProps): React.JSX.Element {
@@ -30,6 +31,14 @@ export function EnvironmentModal(props: EnvironmentModalProps): React.JSX.Elemen
             <p className="text-xs text-slate-400 mt-0.5">Stored in .api-tool/environments.json for the selected API</p>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg border border-surface-border text-slate-300 hover:bg-surface-raised hover:text-slate-100 disabled:opacity-40 transition-colors"
+              disabled={props.loading}
+              onClick={props.onRenameApi}
+              title="Rename this API"
+            >
+              Rename API
+            </button>
             <button
               className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg border border-surface-border text-slate-300 hover:bg-surface-raised hover:text-slate-100 disabled:opacity-40 transition-colors"
               disabled={props.loading || props.saving || !props.environment || !props.dirty}
