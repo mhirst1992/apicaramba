@@ -373,3 +373,58 @@ export function SavePromptModal({
     </div>
   )
 }
+
+export function RenameApiModal({
+  open,
+  value,
+  loading,
+  onChange,
+  onConfirm,
+  onCancel
+}: {
+  open: boolean
+  value: string
+  loading: boolean
+  onChange: (value: string) => void
+  onConfirm: () => void
+  onCancel: () => void
+}): React.JSX.Element | null {
+  if (!open) return null
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+      <div className="w-full max-w-sm rounded-xl border border-surface-border bg-surface-base p-4 shadow-xl">
+        <h3 className="text-sm font-semibold text-slate-100">Rename API</h3>
+        <p className="mt-1 text-xs text-slate-400">Enter a new name for this API.</p>
+        <input
+          autoFocus
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' && !loading) onConfirm()
+            if (event.key === 'Escape') onCancel()
+          }}
+          placeholder="New API name"
+          disabled={loading}
+          className="mt-3 w-full rounded-lg border border-surface-border bg-surface-lower px-3 py-2 text-sm text-slate-100 outline-none focus:border-primary/60 disabled:opacity-50"
+        />
+        <div className="mt-3 flex justify-end gap-2">
+          <button
+            className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg border border-surface-border text-slate-400 hover:bg-surface-raised hover:text-slate-100 transition-colors disabled:opacity-40"
+            onClick={onCancel}
+            disabled={loading}
+          >
+            Cancel
+          </button>
+          <button
+            className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg bg-primary text-white hover:bg-primary/80 disabled:opacity-40"
+            disabled={value.trim().length === 0 || loading}
+            onClick={onConfirm}
+          >
+            {loading ? 'Renaming...' : 'Rename'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}

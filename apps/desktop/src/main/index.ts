@@ -22,6 +22,8 @@ import type {
   CreateApiResult,
   DeleteApiRequest,
   DeleteApiResult,
+  RenameApiRequest,
+  RenameApiResult,
   RecentWorkspace,
   OpenRecentWorkspaceRequest,
   RemoveRecentWorkspaceRequest,
@@ -442,6 +444,62 @@ async function handleDeleteApi(request: DeleteApiRequest): Promise<DeleteApiResu
   }
 }
 
+async function handleRenameApi(request: RenameApiRequest): Promise<RenameApiResult> {
+  const workspaceRootPath = request.workspaceRootPath?.trim()
+  const apiPath = request.apiPath?.trim()
+  const newName = request.newName?.trim()
+
+  if (!workspaceRootPath) {
+    return { status: 'error', message: 'Workspace path is required.' }
+  }
+
+  if (!apiPath) {
+    return { status: 'error', message: 'API path is required.' }
+  }
+
+  if (!newName) {
+    return { status: 'error', message: 'New API name is required.' }
+  }
+
+  try {
+    const apiAbsPath = resolve(workspaceRootPath, apiPath)
+    
+    if (!isWithinWorkspace(workspaceRootPath, apiAbsPath)) {
+      return { status: 'error', message: 'Refusing to rename paths outside the workspace.' }
+    }
+
+    // Verify the API folder exists
+    try {
+      await fs.access(apiAbsPath)
+    } catch {
+      return { status: 'error', message: 'API folder not found.' }
+    }
+
+    // Get the new folder name based on the new API name
+    const newFolderName = slugifyFileStem(newName)
+    const newApiAbsPath = resolve(workspaceRootPath, newFolderName)
+
+    // Check if the new path already exists
+    try {
+      await fs.access(newApiAbsPath)
+      return { status: 'error', message: `An API folder with the name "${newName}" already exists.` }
+    } catch {
+      // This is expected - the folder should not exist
+    }
+
+    // Rename the folder
+    await fs.rename(apiAbsPath, newApiAbsPath)
+
+    const snapshot = await loadWorkspaceSnapshot(workspaceRootPath)
+    return { status: 'renamed', snapshot }
+  } catch (error) {
+    return {
+      status: 'error',
+      message: error instanceof Error ? error.message : 'Failed to rename API.'
+    }
+  }
+}
+
 function slugifyFileStem(input: string): string {
   const stem = input
     .trim()
@@ -675,6 +733,7 @@ app.whenReady().then(() => {
   )
   ipcMain.handle('workspace:create-api', (_, request: CreateApiRequest) => handleCreateApi(request))
   ipcMain.handle('workspace:delete-api', (_, request: DeleteApiRequest) => handleDeleteApi(request))
+  ipcMain.handle('workspace:rename-api', (_, request: RenameApiRequest) => handleRenameApi(request))
   ipcMain.handle('openapi:validate', (_, request: ValidateOpenApiRequest) => validateOpenApi(request))
   ipcMain.handle('openapi:load-editor', (_, request: LoadApiEditorRequest) => handleLoadApiEditor(request))
   ipcMain.handle('openapi:save-editor', (_, request: SaveApiEditorRequest) => handleSaveApiEditor(request))
@@ -712,6 +771,7 @@ app.on('will-quit', () => {
   ipcMain.removeHandler('workspace:remove-recent')
   ipcMain.removeHandler('workspace:create-api')
   ipcMain.removeHandler('workspace:delete-api')
+  ipcMain.removeHandler('workspace:rename-api')
   ipcMain.removeHandler('openapi:validate')
   ipcMain.removeHandler('openapi:load-editor')
   ipcMain.removeHandler('openapi:save-editor')

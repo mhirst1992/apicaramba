@@ -92,3 +92,13 @@ export type CreateApiResult =
 export type DeleteApiResult =
   | { status: 'deleted'; snapshot: WorkspaceSnapshot }
   | { status: 'error'; message: string }
+
+export interface RenameApiRequest {
+  workspaceRootPath: string
+  apiPath: string
+  newName: string
+}
+
+export type RenameApiResult =
+  | { status: 'renamed'; snapshot: WorkspaceSnapshot }
+  | { status: 'error'; message: string }

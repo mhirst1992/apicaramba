@@ -31,7 +31,8 @@ import {
   CreateWorkspaceModal,
   CreateApiModal,
   DeleteResourceModal,
-  SavePromptModal
+  SavePromptModal,
+  RenameApiModal
 } from './components/AppModals.js'
 import { createSchemaId, createSchemaName } from './utils/schemaUtils.js'
 import { createParameterId } from './utils/parameterUtils.js'
@@ -105,6 +106,9 @@ export default function App(): React.JSX.Element {
   const [showDeleteResourceModal, setShowDeleteResourceModal] = React.useState(false)
   const [detailTab, setDetailTab] = React.useState<'edit' | 'run'>('edit')
   const [showSavePromptModal, setShowSavePromptModal] = React.useState(false)
+  const [showRenameApiModal, setShowRenameApiModal] = React.useState(false)
+  const [renameApiValue, setRenameApiValue] = React.useState('')
+  const [renameApiLoading, setRenameApiLoading] = React.useState(false)
   const pendingDeleteActionRef = React.useRef<(() => void) | null>(null)
   const pendingSavePromptActionRef = React.useRef<(() => void) | null>(null)
 
@@ -386,6 +390,49 @@ export default function App(): React.JSX.Element {
       await initializeWorkspace(result.snapshot)
     } finally {
       setLoading(false)
+    }
+  }
+
+  function onRenameApi(api: ApiSummary): void {
+    if (!snapshot) return
+    
+    // If renaming the current API and there are unsaved changes, show save prompt first
+    if (api.id === selectedApiId && (isDirty || schemaDirty)) {
+      requestSaveConfirmation(() => {
+        setRenameApiValue(api.name)
+        setShowRenameApiModal(true)
+      })
+    } else {
+      setRenameApiValue(api.name)
+      setShowRenameApiModal(true)
+    }
+  }
+
+  async function onConfirmRenameApi(api: ApiSummary): Promise<void> {
+    if (!snapshot) return
+    
+    const newName = renameApiValue.trim()
+    if (!newName) return
+    
+    setRenameApiLoading(true)
+    setOpenError(null)
+    try {
+      const result = await window.appBridge.renameApi({
+        workspaceRootPath: snapshot.workspace.rootPath,
+        apiPath: api.path,
+        newName
+      })
+
+      if (result.status === 'error') {
+        setOpenError(result.message)
+        return
+      }
+
+      setShowRenameApiModal(false)
+      setRenameApiValue('')
+      await initializeWorkspace(result.snapshot)
+    } finally {
+      setRenameApiLoading(false)
     }
   }
 
@@ -1473,6 +1520,7 @@ export default function App(): React.JSX.Element {
           onAddParameter={addEnvironmentParameter}
           onUpdateParameter={upsertEnvironmentParameter}
           onRemoveParameter={removeEnvironmentParameter}
+          onRenameApi={selectedApi ? () => onRenameApi(selectedApi) : undefined}
         />
       ) : null}
 
@@ -1525,6 +1573,18 @@ export default function App(): React.JSX.Element {
         onSave={onConfirmSavePrompt}
         onDiscard={onDiscardSavePrompt}
         onCancel={onCancelSavePrompt}
+      />
+
+      <RenameApiModal
+        open={showRenameApiModal}
+        value={renameApiValue}
+        loading={renameApiLoading}
+        onChange={setRenameApiValue}
+        onConfirm={() => { if (selectedApi) void onConfirmRenameApi(selectedApi) }}
+        onCancel={() => {
+          setShowRenameApiModal(false)
+          setRenameApiValue('')
+        }}
       />
     </div>
   )

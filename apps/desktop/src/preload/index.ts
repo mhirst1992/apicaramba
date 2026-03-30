@@ -12,6 +12,8 @@ import type {
   CreateApiResult,
   DeleteApiRequest,
   DeleteApiResult,
+  RenameApiRequest,
+  RenameApiResult,
   ValidateOpenApiRequest,
   ValidateOpenApiResult,
   LoadApiEditorRequest,
@@ -45,6 +47,7 @@ export interface AppBridge {
   removeRecentWorkspace: (request: RemoveRecentWorkspaceRequest) => Promise<RemoveRecentWorkspaceResult>
   createApi: (request: CreateApiRequest) => Promise<CreateApiResult>
   deleteApi: (request: DeleteApiRequest) => Promise<DeleteApiResult>
+  renameApi: (request: RenameApiRequest) => Promise<RenameApiResult>
   validateOpenApi: (request: ValidateOpenApiRequest) => Promise<ValidateOpenApiResult>
   loadApiEditor: (request: LoadApiEditorRequest) => Promise<LoadApiEditorResult>
   saveApiEditor: (request: SaveApiEditorRequest) => Promise<SaveApiEditorResult>
@@ -80,6 +83,8 @@ const bridge: AppBridge = {
     ipcRenderer.invoke('workspace:create-api', request) as Promise<CreateApiResult>,
   deleteApi: (request: DeleteApiRequest) =>
     ipcRenderer.invoke('workspace:delete-api', request) as Promise<DeleteApiResult>,
+  renameApi: (request: RenameApiRequest) =>
+    ipcRenderer.invoke('workspace:rename-api', request) as Promise<RenameApiResult>,
   validateOpenApi: (request: ValidateOpenApiRequest) =>
     ipcRenderer.invoke('openapi:validate', request) as Promise<ValidateOpenApiResult>,
   loadApiEditor: (request: LoadApiEditorRequest) =>
