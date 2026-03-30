@@ -33,8 +33,8 @@ export function EnvironmentModal(props: EnvironmentModalProps): React.JSX.Elemen
           <div className="flex items-center gap-2">
             <button
               className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg border border-surface-border text-slate-300 hover:bg-surface-raised hover:text-slate-100 disabled:opacity-40 transition-colors"
-              disabled={props.loading}
-              onClick={props.onRenameApi}
+              disabled={props.loading || !props.onRenameApi}
+              onClick={() => props.onRenameApi?.()}
               title="Rename this API"
             >
               Rename API
