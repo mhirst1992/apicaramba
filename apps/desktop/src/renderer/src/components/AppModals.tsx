@@ -17,7 +17,7 @@ export function CreateFolderModal({
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4">
       <div className="w-full max-w-sm rounded-xl border border-surface-border bg-surface-base p-4 shadow-xl">
         <h3 className="text-sm font-semibold text-slate-100">Create Folder</h3>
         <p className="mt-1 text-xs text-slate-400">Choose a name for the new folder.</p>
@@ -72,7 +72,7 @@ export function CreateSchemaModal({
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4">
       <div className="w-full max-w-sm rounded-xl border border-surface-border bg-surface-base p-4 shadow-xl">
         <h3 className="text-sm font-semibold text-slate-100">Create Schema</h3>
         <p className="mt-1 text-xs text-slate-400">Choose a schema name and usage tag.</p>
@@ -137,7 +137,7 @@ export function RenameFolderModal({
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4">
       <div className="w-full max-w-sm rounded-xl border border-surface-border bg-surface-base p-4 shadow-xl">
         <h3 className="text-sm font-semibold text-slate-100">Rename Folder</h3>
         <p className="mt-1 text-xs text-slate-400">Enter a new name for this folder.</p>
@@ -194,7 +194,7 @@ export function CreateWorkspaceModal({
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4">
       <div className="w-full max-w-sm rounded-xl border border-surface-border bg-surface-base p-4 shadow-xl">
         <h3 className="text-sm font-semibold text-slate-100">Create New Workspace</h3>
         <p className="mt-1 text-xs text-slate-400">
@@ -259,7 +259,7 @@ export function CreateApiModal({
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4">
       <div className="w-full max-w-sm rounded-xl border border-surface-border bg-surface-base p-4 shadow-xl">
         <h3 className="text-sm font-semibold text-slate-100">Create New API</h3>
         <p className="mt-1 text-xs text-slate-400">
@@ -308,7 +308,7 @@ export function DeleteResourceModal({
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4">
       <div className="w-full max-w-sm rounded-xl border border-surface-border bg-surface-base p-4 shadow-xl">
         <h3 className="text-sm font-semibold text-slate-100">Delete Resource</h3>
         <p className="mt-1 text-xs text-slate-400">Are you sure you want to delete this resource?</p>
@@ -345,7 +345,7 @@ export function SavePromptModal({
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4">
       <div className="w-full max-w-sm rounded-xl border border-surface-border bg-surface-base p-4 shadow-xl">
         <h3 className="text-sm font-semibold text-slate-100">Unsaved Changes</h3>
         <p className="mt-1 text-xs text-slate-400">You have unsaved changes. What would you like to do?</p>
@@ -377,6 +377,7 @@ export function SavePromptModal({
 export function RenameApiModal({
   open,
   value,
+  error,
   loading,
   onChange,
   onConfirm,
@@ -384,6 +385,7 @@ export function RenameApiModal({
 }: {
   open: boolean
   value: string
+  error: string | null
   loading: boolean
   onChange: (value: string) => void
   onConfirm: () => void
@@ -392,10 +394,15 @@ export function RenameApiModal({
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4">
       <div className="w-full max-w-sm rounded-xl border border-surface-border bg-surface-base p-4 shadow-xl">
         <h3 className="text-sm font-semibold text-slate-100">Rename API</h3>
         <p className="mt-1 text-xs text-slate-400">Enter a new name for this API.</p>
+        {error ? (
+          <div className="mt-3 rounded-lg border border-secondary/60 bg-secondary/10 px-3 py-2 text-xs text-slate-300">
+            {error}
+          </div>
+        ) : null}
         <input
           autoFocus
           value={value}
