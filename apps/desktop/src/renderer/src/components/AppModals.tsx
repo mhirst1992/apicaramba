@@ -295,3 +295,38 @@ export function CreateApiModal({
     </div>
   )
 }
+
+export function DeleteResourceModal({
+  open,
+  onConfirm,
+  onCancel
+}: {
+  open: boolean
+  onConfirm: () => void
+  onCancel: () => void
+}): React.JSX.Element | null {
+  if (!open) return null
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+      <div className="w-full max-w-sm rounded-xl border border-surface-border bg-surface-base p-4 shadow-xl">
+        <h3 className="text-sm font-semibold text-slate-100">Delete Resource</h3>
+        <p className="mt-1 text-xs text-slate-400">Are you sure you want to delete this resource?</p>
+        <div className="mt-3 flex justify-end gap-2">
+          <button
+            className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg border border-surface-border text-slate-400 hover:bg-surface-raised hover:text-slate-100 transition-colors"
+            onClick={onCancel}
+          >
+            Cancel
+          </button>
+          <button
+            className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg bg-secondary text-white hover:bg-secondary/80"
+            onClick={onConfirm}
+          >
+            Delete
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
