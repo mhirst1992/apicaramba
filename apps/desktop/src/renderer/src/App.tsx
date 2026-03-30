@@ -109,6 +109,7 @@ export default function App(): React.JSX.Element {
   const [showRenameApiModal, setShowRenameApiModal] = React.useState(false)
   const [renameApiValue, setRenameApiValue] = React.useState('')
   const [renameApiLoading, setRenameApiLoading] = React.useState(false)
+  const [renameApiError, setRenameApiError] = React.useState<string | null>(null)
   const pendingDeleteActionRef = React.useRef<(() => void) | null>(null)
   const pendingSavePromptActionRef = React.useRef<(() => void) | null>(null)
 
@@ -399,10 +400,12 @@ export default function App(): React.JSX.Element {
     // If renaming the current API and there are unsaved changes, show save prompt first
     if (api.id === selectedApiId && (isDirty || schemaDirty)) {
       requestSaveConfirmation(() => {
+        setRenameApiError(null)
         setRenameApiValue(api.name)
         setShowRenameApiModal(true)
       })
     } else {
+      setRenameApiError(null)
       setRenameApiValue(api.name)
       setShowRenameApiModal(true)
     }
@@ -415,21 +418,25 @@ export default function App(): React.JSX.Element {
     if (!newName) return
     
     setRenameApiLoading(true)
+    setRenameApiError(null)
     setOpenError(null)
     try {
       const result = await window.appBridge.renameApi({
         workspaceRootPath: snapshot.workspace.rootPath,
         apiPath: api.path,
+        openapiRelativePath: api.openapiPath,
         newName
       })
 
       if (result.status === 'error') {
+        setRenameApiError(result.message)
         setOpenError(result.message)
         return
       }
 
       setShowRenameApiModal(false)
       setRenameApiValue('')
+      setRenameApiError(null)
       await initializeWorkspace(result.snapshot)
     } finally {
       setRenameApiLoading(false)
@@ -1506,22 +1513,24 @@ export default function App(): React.JSX.Element {
       />
 
       {showEnvironmentPanel ? (
-        <EnvironmentModal
-          environment={activeEnvironment}
-          loading={environmentsLoading}
-          saving={environmentsSaving}
-          dirty={environmentsDirty}
-          error={environmentsError}
-          message={environmentsMessage}
-          onClose={() => setShowEnvironmentPanel(false)}
-          onChangeName={(name) => updateActiveEnvironment({ name })}
-          onChangeBaseUrl={(baseUrl) => updateActiveEnvironment({ baseUrl })}
-          onSave={() => { void onSaveEnvironments() }}
-          onAddParameter={addEnvironmentParameter}
-          onUpdateParameter={upsertEnvironmentParameter}
-          onRemoveParameter={removeEnvironmentParameter}
-          onRenameApi={selectedApi ? () => onRenameApi(selectedApi) : undefined}
-        />
+        <>
+          <EnvironmentModal
+            environment={activeEnvironment}
+            loading={environmentsLoading}
+            saving={environmentsSaving}
+            dirty={environmentsDirty}
+            error={environmentsError}
+            message={environmentsMessage}
+            onClose={() => setShowEnvironmentPanel(false)}
+            onChangeName={(name) => updateActiveEnvironment({ name })}
+            onChangeBaseUrl={(baseUrl) => updateActiveEnvironment({ baseUrl })}
+            onSave={() => { void onSaveEnvironments() }}
+            onAddParameter={addEnvironmentParameter}
+            onUpdateParameter={upsertEnvironmentParameter}
+            onRemoveParameter={removeEnvironmentParameter}
+            onRenameApi={selectedApi ? () => onRenameApi(selectedApi) : undefined}
+          />
+        </>
       ) : null}
 
       <RenameFolderModal
@@ -1578,12 +1587,14 @@ export default function App(): React.JSX.Element {
       <RenameApiModal
         open={showRenameApiModal}
         value={renameApiValue}
+        error={renameApiError}
         loading={renameApiLoading}
         onChange={setRenameApiValue}
         onConfirm={() => { if (selectedApi) void onConfirmRenameApi(selectedApi) }}
         onCancel={() => {
           setShowRenameApiModal(false)
           setRenameApiValue('')
+          setRenameApiError(null)
         }}
       />
     </div>

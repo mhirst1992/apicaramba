@@ -96,6 +96,7 @@ export type DeleteApiResult =
 export interface RenameApiRequest {
   workspaceRootPath: string
   apiPath: string
+  openapiRelativePath: string
   newName: string
 }
 

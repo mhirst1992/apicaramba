@@ -447,6 +447,7 @@ async function handleDeleteApi(request: DeleteApiRequest): Promise<DeleteApiResu
 async function handleRenameApi(request: RenameApiRequest): Promise<RenameApiResult> {
   const workspaceRootPath = request.workspaceRootPath?.trim()
   const apiPath = request.apiPath?.trim()
+  const openapiRelativePath = request.openapiRelativePath?.trim()
   const newName = request.newName?.trim()
 
   if (!workspaceRootPath) {
@@ -457,14 +458,19 @@ async function handleRenameApi(request: RenameApiRequest): Promise<RenameApiResu
     return { status: 'error', message: 'API path is required.' }
   }
 
+  if (!openapiRelativePath) {
+    return { status: 'error', message: 'OpenAPI path is required.' }
+  }
+
   if (!newName) {
     return { status: 'error', message: 'New API name is required.' }
   }
 
   try {
     const apiAbsPath = resolve(workspaceRootPath, apiPath)
+    const openapiAbsPath = resolve(workspaceRootPath, openapiRelativePath)
     
-    if (!isWithinWorkspace(workspaceRootPath, apiAbsPath)) {
+    if (!isWithinWorkspace(workspaceRootPath, apiAbsPath) || !isWithinWorkspace(workspaceRootPath, openapiAbsPath)) {
       return { status: 'error', message: 'Refusing to rename paths outside the workspace.' }
     }
 
@@ -475,20 +481,15 @@ async function handleRenameApi(request: RenameApiRequest): Promise<RenameApiResu
       return { status: 'error', message: 'API folder not found.' }
     }
 
-    // Get the new folder name based on the new API name
-    const newFolderName = slugifyFileStem(newName)
-    const newApiAbsPath = resolve(workspaceRootPath, newFolderName)
-
-    // Check if the new path already exists
+    // Verify the OpenAPI source exists
     try {
-      await fs.access(newApiAbsPath)
-      return { status: 'error', message: `An API folder with the name "${newName}" already exists.` }
+      await fs.access(openapiAbsPath)
     } catch {
-      // This is expected - the folder should not exist
+      return { status: 'error', message: 'OpenAPI file not found.' }
     }
 
-    // Rename the folder
-    await fs.rename(apiAbsPath, newApiAbsPath)
+    await updateOpenApiTitle(openapiAbsPath, newName)
+    await updateStructureApiName(apiAbsPath, apiPath, openapiRelativePath, newName)
 
     const snapshot = await loadWorkspaceSnapshot(workspaceRootPath)
     return { status: 'renamed', snapshot }
@@ -498,6 +499,72 @@ async function handleRenameApi(request: RenameApiRequest): Promise<RenameApiResu
       message: error instanceof Error ? error.message : 'Failed to rename API.'
     }
   }
+}
+
+async function updateOpenApiTitle(openapiPath: string, newTitle: string): Promise<void> {
+  const raw = await fs.readFile(openapiPath, 'utf8')
+  const parsed = JSON.parse(raw) as Record<string, unknown>
+  const existingInfo = (parsed['info'] as Record<string, unknown> | undefined) ?? {}
+  const updated = {
+    ...parsed,
+    info: {
+      ...existingInfo,
+      title: newTitle
+    }
+  }
+
+  await fs.writeFile(openapiPath, JSON.stringify(updated, null, 2) + '\n', 'utf8')
+}
+
+async function updateStructureApiName(
+  apiAbsPath: string,
+  apiPath: string,
+  openapiRelativePath: string,
+  newName: string
+): Promise<void> {
+  const structurePath = join(apiAbsPath, '.api-tool', 'structure.json')
+
+  let raw: string
+  try {
+    raw = await fs.readFile(structurePath, 'utf8')
+  } catch {
+    // If no structure file exists yet, there's nothing to update.
+    return
+  }
+
+  const parsed = JSON.parse(raw) as { version?: string; apis?: ApiStructure[] }
+  const apis = Array.isArray(parsed.apis) ? parsed.apis : []
+  if (apis.length === 0) {
+    return
+  }
+
+  const expectedApiId = toApiId(openapiRelativePath)
+  let didUpdate = false
+  const updatedApis = apis.map((api) => {
+    if (api.path === apiPath || api.id === expectedApiId) {
+      didUpdate = true
+      return { ...api, name: newName }
+    }
+
+    return api
+  })
+
+  if (!didUpdate) return
+
+  const updated = {
+    version: typeof parsed.version === 'string' ? parsed.version : '1',
+    apis: updatedApis
+  }
+
+  await fs.writeFile(structurePath, JSON.stringify(updated, null, 2) + '\n', 'utf8')
+}
+
+function toApiId(openapiRelativePath: string): string {
+  return openapiRelativePath
+    .replaceAll('\\', '/')
+    .toLowerCase()
+    .replace(/[^a-z0-9/._-]+/g, '-')
+    .replaceAll('/', '__')
 }
 
 function slugifyFileStem(input: string): string {
