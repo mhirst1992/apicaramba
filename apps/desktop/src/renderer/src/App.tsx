@@ -394,15 +394,23 @@ export default function App(): React.JSX.Element {
   }
 
   function onRenameApi(api: ApiSummary): void {
-    if (!snapshot) return
+    console.log('[DEBUG] onRenameApi called with api:', api.name)
+    if (!snapshot) {
+      console.log('[DEBUG] No snapshot, returning')
+      return
+    }
+    console.log('[DEBUG] isDirty:', isDirty, 'schemaDirty:', schemaDirty, 'selectedApiId:', selectedApiId, 'api.id:', api.id)
     
     // If renaming the current API and there are unsaved changes, show save prompt first
     if (api.id === selectedApiId && (isDirty || schemaDirty)) {
+      console.log('[DEBUG] Showing save prompt first')
       requestSaveConfirmation(() => {
+        console.log('[DEBUG] After save confirmation, setting modal state')
         setRenameApiValue(api.name)
         setShowRenameApiModal(true)
       })
     } else {
+      console.log('[DEBUG] Directly showing rename modal')
       setRenameApiValue(api.name)
       setShowRenameApiModal(true)
     }
@@ -1506,22 +1514,25 @@ export default function App(): React.JSX.Element {
       />
 
       {showEnvironmentPanel ? (
-        <EnvironmentModal
-          environment={activeEnvironment}
-          loading={environmentsLoading}
-          saving={environmentsSaving}
-          dirty={environmentsDirty}
-          error={environmentsError}
-          message={environmentsMessage}
-          onClose={() => setShowEnvironmentPanel(false)}
-          onChangeName={(name) => updateActiveEnvironment({ name })}
-          onChangeBaseUrl={(baseUrl) => updateActiveEnvironment({ baseUrl })}
-          onSave={() => { void onSaveEnvironments() }}
-          onAddParameter={addEnvironmentParameter}
-          onUpdateParameter={upsertEnvironmentParameter}
-          onRemoveParameter={removeEnvironmentParameter}
-          onRenameApi={selectedApi ? () => onRenameApi(selectedApi) : undefined}
-        />
+        <>
+          {console.log('[DEBUG] EnvironmentModal rendering, selectedApi:', selectedApi?.name, 'selectedApiId:', selectedApiId)}
+          <EnvironmentModal
+            environment={activeEnvironment}
+            loading={environmentsLoading}
+            saving={environmentsSaving}
+            dirty={environmentsDirty}
+            error={environmentsError}
+            message={environmentsMessage}
+            onClose={() => setShowEnvironmentPanel(false)}
+            onChangeName={(name) => updateActiveEnvironment({ name })}
+            onChangeBaseUrl={(baseUrl) => updateActiveEnvironment({ baseUrl })}
+            onSave={() => { void onSaveEnvironments() }}
+            onAddParameter={addEnvironmentParameter}
+            onUpdateParameter={upsertEnvironmentParameter}
+            onRemoveParameter={removeEnvironmentParameter}
+            onRenameApi={selectedApi ? () => onRenameApi(selectedApi) : undefined}
+          />
+        </>
       ) : null}
 
       <RenameFolderModal
