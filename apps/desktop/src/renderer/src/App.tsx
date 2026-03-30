@@ -29,7 +29,8 @@ import {
   CreateSchemaModal,
   RenameFolderModal,
   CreateWorkspaceModal,
-  CreateApiModal
+  CreateApiModal,
+  DeleteResourceModal
 } from './components/AppModals.js'
 import { createSchemaId, createSchemaName } from './utils/schemaUtils.js'
 import { createParameterId } from './utils/parameterUtils.js'
@@ -100,7 +101,9 @@ export default function App(): React.JSX.Element {
   const [showCreateSchemaModal, setShowCreateSchemaModal] = React.useState(false)
   const [newSchemaName, setNewSchemaName] = React.useState('')
   const [newSchemaUsageTag, setNewSchemaUsageTag] = React.useState<SchemaUsageTag>('Both')
+  const [showDeleteResourceModal, setShowDeleteResourceModal] = React.useState(false)
   const [detailTab, setDetailTab] = React.useState<'edit' | 'run'>('edit')
+  const pendingDeleteActionRef = React.useRef<(() => void) | null>(null)
 
   const selectedApi = React.useMemo(
     () => snapshot?.apis.find((a) => a.id === selectedApiId) ?? null,
@@ -280,9 +283,32 @@ export default function App(): React.JSX.Element {
     }
   }
 
-  async function onDeleteApi(api: ApiSummary): Promise<void> {
+  function requestDeleteConfirmation(action: () => void): void {
+    pendingDeleteActionRef.current = action
+    setShowDeleteResourceModal(true)
+  }
+
+  function onCancelDeleteResource(): void {
+    pendingDeleteActionRef.current = null
+    setShowDeleteResourceModal(false)
+  }
+
+  function onConfirmDeleteResource(): void {
+    const action = pendingDeleteActionRef.current
+    pendingDeleteActionRef.current = null
+    setShowDeleteResourceModal(false)
+    action?.()
+  }
+
+  function onDeleteApi(api: ApiSummary): void {
     if (!snapshot) return
-    if (!window.confirm('Are you sure you want to delete this resource?')) return
+    requestDeleteConfirmation(() => {
+      void performDeleteApi(api)
+    })
+  }
+
+  async function performDeleteApi(api: ApiSummary): Promise<void> {
+    if (!snapshot) return
 
     setLoading(true)
     setOpenError(null)
@@ -752,40 +778,40 @@ export default function App(): React.JSX.Element {
 
   function onDeleteOperation(operation: OperationRef, folderId: string | null): void {
     if (!editorState) return
-    if (!window.confirm('Are you sure you want to delete this resource?')) return
+    requestDeleteConfirmation(() => {
+      const operationKey = `${operation.method}:${operation.path}`
+      const matchedOperation = mergedOperations.find((candidate) => candidate.key === operationKey)
+      const sourceKey = matchedOperation?.sourceKey ?? operationKey
 
-    const operationKey = `${operation.method}:${operation.path}`
-    const matchedOperation = mergedOperations.find((candidate) => candidate.key === operationKey)
-    const sourceKey = matchedOperation?.sourceKey ?? operationKey
+      updateStructure((draft) => {
+        if (folderId === null) {
+          draft.ungrouped = draft.ungrouped.filter((ref) => ref.id !== operation.id)
+          return
+        }
 
-    updateStructure((draft) => {
-      if (folderId === null) {
-        draft.ungrouped = draft.ungrouped.filter((ref) => ref.id !== operation.id)
-        return
+        collectAndRemoveOperation(draft.rootFolder, operation.id)
+      })
+
+      setEditorState((current) => {
+        if (!current) return current
+        return {
+          ...current,
+          operations: current.operations.filter((candidate) => (candidate.sourceKey ?? candidate.key) !== sourceKey)
+        }
+      })
+
+      setEditedOps((current) => {
+        const next = { ...current }
+        delete next[sourceKey]
+        return next
+      })
+
+      if (selectedOpKey === operationKey || selectedOpKey === sourceKey) {
+        setSelectedOpKey(null)
       }
 
-      collectAndRemoveOperation(draft.rootFolder, operation.id)
+      setSaveStatus('idle')
     })
-
-    setEditorState((current) => {
-      if (!current) return current
-      return {
-        ...current,
-        operations: current.operations.filter((candidate) => (candidate.sourceKey ?? candidate.key) !== sourceKey)
-      }
-    })
-
-    setEditedOps((current) => {
-      const next = { ...current }
-      delete next[sourceKey]
-      return next
-    })
-
-    if (selectedOpKey === operationKey || selectedOpKey === sourceKey) {
-      setSelectedOpKey(null)
-    }
-
-    setSaveStatus('idle')
   }
 
   async function onValidate(): Promise<void> {
@@ -940,55 +966,55 @@ export default function App(): React.JSX.Element {
 
   function onDeleteSchema(schemaId: string): void {
     if (!editorState) return
-    if (!window.confirm('Are you sure you want to delete this resource?')) return
+    requestDeleteConfirmation(() => {
+      const schema = mergedSchemas.find((candidate) => candidate.id === schemaId)
+      if (!schema) return
 
-    const schema = mergedSchemas.find((candidate) => candidate.id === schemaId)
-    if (!schema) return
+      setEditorState((current) => {
+        if (!current) return current
 
-    setEditorState((current) => {
-      if (!current) return current
-
-      return {
-        ...current,
-        schemas: current.schemas.filter((candidate) => candidate.id !== schemaId),
-        operations: current.operations.map((operation) => removeSchemaReferencesFromOperation(operation, schema.name))
-      }
-    })
-
-    setEditedSchemas((current) => {
-      const next = { ...current }
-      delete next[schemaId]
-      return next
-    })
-
-    setEditedOps((current) => {
-      const next: Record<string, OperationDetail> = { ...current }
-      const sourceOperations = editorState.operations
-
-      for (const baseOperation of sourceOperations) {
-        const editKey = baseOperation.sourceKey ?? baseOperation.key
-        const operation = current[editKey] ?? baseOperation
-        const cleaned = removeSchemaReferencesFromOperation(operation, schema.name)
-
-        if (
-          cleaned.requestBodySchemaName !== operation.requestBodySchemaName
-          || cleaned.requestBodyMediaType !== operation.requestBodyMediaType
-          || cleaned.requestBodyRequired !== operation.requestBodyRequired
-          || cleaned.responseSchemas.length !== operation.responseSchemas.length
-        ) {
-          next[editKey] = cleaned
+        return {
+          ...current,
+          schemas: current.schemas.filter((candidate) => candidate.id !== schemaId),
+          operations: current.operations.map((operation) => removeSchemaReferencesFromOperation(operation, schema.name))
         }
+      })
+
+      setEditedSchemas((current) => {
+        const next = { ...current }
+        delete next[schemaId]
+        return next
+      })
+
+      setEditedOps((current) => {
+        const next: Record<string, OperationDetail> = { ...current }
+        const sourceOperations = editorState.operations
+
+        for (const baseOperation of sourceOperations) {
+          const editKey = baseOperation.sourceKey ?? baseOperation.key
+          const operation = current[editKey] ?? baseOperation
+          const cleaned = removeSchemaReferencesFromOperation(operation, schema.name)
+
+          if (
+            cleaned.requestBodySchemaName !== operation.requestBodySchemaName
+            || cleaned.requestBodyMediaType !== operation.requestBodyMediaType
+            || cleaned.requestBodyRequired !== operation.requestBodyRequired
+            || cleaned.responseSchemas.length !== operation.responseSchemas.length
+          ) {
+            next[editKey] = cleaned
+          }
+        }
+
+        return next
+      })
+
+      if (selectedSchemaId === schemaId) {
+        const remainingSchemas = mergedSchemas.filter((candidate) => candidate.id !== schemaId)
+        setSelectedSchemaId(remainingSchemas[0]?.id ?? null)
       }
 
-      return next
+      setSaveStatus('idle')
     })
-
-    if (selectedSchemaId === schemaId) {
-      const remainingSchemas = mergedSchemas.filter((candidate) => candidate.id !== schemaId)
-      setSelectedSchemaId(remainingSchemas[0]?.id ?? null)
-    }
-
-    setSaveStatus('idle')
   }
 
   function onCreateSchema(usageTag: SchemaUsageTag, explicitName?: string): void {
@@ -1418,6 +1444,12 @@ export default function App(): React.JSX.Element {
           setShowCreateApiModal(false)
           setNewApiName('')
         }}
+      />
+
+      <DeleteResourceModal
+        open={showDeleteResourceModal}
+        onConfirm={onConfirmDeleteResource}
+        onCancel={onCancelDeleteResource}
       />
     </div>
   )
