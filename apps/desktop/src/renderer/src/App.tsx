@@ -30,7 +30,8 @@ import {
   RenameFolderModal,
   CreateWorkspaceModal,
   CreateApiModal,
-  DeleteResourceModal
+  DeleteResourceModal,
+  SavePromptModal
 } from './components/AppModals.js'
 import { createSchemaId, createSchemaName } from './utils/schemaUtils.js'
 import { createParameterId } from './utils/parameterUtils.js'
@@ -103,7 +104,9 @@ export default function App(): React.JSX.Element {
   const [newSchemaUsageTag, setNewSchemaUsageTag] = React.useState<SchemaUsageTag>('Both')
   const [showDeleteResourceModal, setShowDeleteResourceModal] = React.useState(false)
   const [detailTab, setDetailTab] = React.useState<'edit' | 'run'>('edit')
+  const [showSavePromptModal, setShowSavePromptModal] = React.useState(false)
   const pendingDeleteActionRef = React.useRef<(() => void) | null>(null)
+  const pendingSavePromptActionRef = React.useRef<(() => void) | null>(null)
 
   const selectedApi = React.useMemo(
     () => snapshot?.apis.find((a) => a.id === selectedApiId) ?? null,
@@ -283,6 +286,10 @@ export default function App(): React.JSX.Element {
     }
   }
 
+  function onCreateApiWithSavePrompt(): void {
+    requestSaveConfirmation(() => onCreateApi())
+  }
+
   function requestDeleteConfirmation(action: () => void): void {
     pendingDeleteActionRef.current = action
     setShowDeleteResourceModal(true)
@@ -300,11 +307,62 @@ export default function App(): React.JSX.Element {
     action?.()
   }
 
+  function requestSaveConfirmation(action: () => void | Promise<void>): void {
+    const hasUnsavedChanges = isDirty || schemaDirty
+    if (!hasUnsavedChanges) {
+      void (action instanceof Promise ? action : Promise.resolve(action()))
+      return
+    }
+
+    pendingSavePromptActionRef.current = action
+    setShowSavePromptModal(true)
+  }
+
+  function onCancelSavePrompt(): void {
+    pendingSavePromptActionRef.current = null
+    setShowSavePromptModal(false)
+  }
+
+  function onConfirmSavePrompt(): void {
+    const action = pendingSavePromptActionRef.current
+    pendingSavePromptActionRef.current = null
+    setShowSavePromptModal(false)
+    
+    if (!action) return
+    
+    if (isDirty || schemaDirty) {
+      void onSave().then(() => {
+        void (action instanceof Promise ? action : Promise.resolve(action()))
+      })
+    } else {
+      void (action instanceof Promise ? action : Promise.resolve(action()))
+    }
+  }
+
+  function onDiscardSavePrompt(): void {
+    const action = pendingSavePromptActionRef.current
+    pendingSavePromptActionRef.current = null
+    setShowSavePromptModal(false)
+    
+    if (!action) return
+    void (action instanceof Promise ? action : Promise.resolve(action()))
+  }
+
   function onDeleteApi(api: ApiSummary): void {
     if (!snapshot) return
-    requestDeleteConfirmation(() => {
-      void performDeleteApi(api)
-    })
+    
+    // If deleting the current API and there are unsaved changes, show save prompt first
+    if (api.id === selectedApiId && (isDirty || schemaDirty)) {
+      requestSaveConfirmation(() => {
+        requestDeleteConfirmation(() => {
+          void performDeleteApi(api)
+        })
+      })
+    } else {
+      requestDeleteConfirmation(() => {
+        void performDeleteApi(api)
+      })
+    }
   }
 
   async function performDeleteApi(api: ApiSummary): Promise<void> {
@@ -349,6 +407,10 @@ export default function App(): React.JSX.Element {
     void refreshRecentWorkspaces()
   }
 
+  function onReturnHomeWithSavePrompt(): void {
+    requestSaveConfirmation(() => onReturnHome())
+  }
+
   async function onSelectApi(api: ApiSummary): Promise<void> {
     if (!snapshot) return
     setSelectedApiId(api.id)
@@ -357,6 +419,10 @@ export default function App(): React.JSX.Element {
     setSelectedFolderId(null)
     await loadEnvironmentsForApi(snapshot.workspace.rootPath, api.openapiPath)
     await loadEditorForApi(snapshot.workspace.rootPath, api)
+  }
+
+  function onSelectApiWithSavePrompt(api: ApiSummary): void {
+    requestSaveConfirmation(() => onSelectApi(api))
   }
 
   function onToggleApiCard(api: ApiSummary): void {
@@ -373,7 +439,7 @@ export default function App(): React.JSX.Element {
     }
 
     setOpenApiMenuId(null)
-    void onSelectApi(api)
+    onSelectApiWithSavePrompt(api)
   }
 
   async function loadEnvironmentsForApi(
@@ -1125,14 +1191,16 @@ export default function App(): React.JSX.Element {
                     if (selectedApiId === api.id) {
                       onCreateFolder()
                     } else {
-                      void onSelectApi(api).then(() => onCreateFolder())
+                      setOpenApiMenuId(null)
+                      onSelectApiWithSavePrompt(api)
+                      setTimeout(() => onCreateFolder(), 0)
                     }
-                    setOpenApiMenuId(null)
                   }}
                   onNewRequest={() => {
                     setOpenApiMenuId(null)
                     if (selectedApiId !== api.id) {
-                      void onSelectApi(api).then(() => onCreateDefaultRequest())
+                      onSelectApiWithSavePrompt(api)
+                      setTimeout(() => onCreateDefaultRequest(), 0)
                     } else {
                       onCreateDefaultRequest()
                     }
@@ -1179,7 +1247,7 @@ export default function App(): React.JSX.Element {
           <div className="px-3 pb-3 shrink-0 flex gap-2">
             <button
               className="w-1/2 text-xs px-3 py-2 rounded-lg border border-surface-border text-slate-400 hover:bg-surface-raised hover:text-slate-200 transition-colors disabled:opacity-40"
-              onClick={onReturnHome}
+              onClick={onReturnHomeWithSavePrompt}
               disabled={loading}
             >
               Switch Workspace
@@ -1439,7 +1507,7 @@ export default function App(): React.JSX.Element {
         value={newApiName}
         loading={loading}
         onChange={setNewApiName}
-        onConfirm={() => { void onCreateApi() }}
+        onConfirm={onCreateApiWithSavePrompt}
         onCancel={() => {
           setShowCreateApiModal(false)
           setNewApiName('')
@@ -1450,6 +1518,13 @@ export default function App(): React.JSX.Element {
         open={showDeleteResourceModal}
         onConfirm={onConfirmDeleteResource}
         onCancel={onCancelDeleteResource}
+      />
+
+      <SavePromptModal
+        open={showSavePromptModal}
+        onSave={onConfirmSavePrompt}
+        onDiscard={onDiscardSavePrompt}
+        onCancel={onCancelSavePrompt}
       />
     </div>
   )

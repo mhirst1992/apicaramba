@@ -330,3 +330,46 @@ export function DeleteResourceModal({
     </div>
   )
 }
+
+export function SavePromptModal({
+  open,
+  onSave,
+  onDiscard,
+  onCancel
+}: {
+  open: boolean
+  onSave: () => void
+  onDiscard: () => void
+  onCancel: () => void
+}): React.JSX.Element | null {
+  if (!open) return null
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+      <div className="w-full max-w-sm rounded-xl border border-surface-border bg-surface-base p-4 shadow-xl">
+        <h3 className="text-sm font-semibold text-slate-100">Unsaved Changes</h3>
+        <p className="mt-1 text-xs text-slate-400">You have unsaved changes. What would you like to do?</p>
+        <div className="mt-3 flex justify-end gap-2">
+          <button
+            className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg border border-surface-border text-slate-400 hover:bg-surface-raised hover:text-slate-100 transition-colors"
+            onClick={onCancel}
+          >
+            Cancel
+          </button>
+          <button
+            className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg border border-surface-border text-slate-400 hover:bg-surface-raised hover:text-slate-100 transition-colors"
+            onClick={onDiscard}
+          >
+            Discard
+          </button>
+          <button
+            className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg bg-primary text-white hover:bg-primary/80"
+            onClick={onSave}
+          >
+            Save
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
