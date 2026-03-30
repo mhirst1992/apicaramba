@@ -280,6 +280,31 @@ export default function App(): React.JSX.Element {
     }
   }
 
+  async function onDeleteApi(api: ApiSummary): Promise<void> {
+    if (!snapshot) return
+    if (!window.confirm('Are you sure you want to delete this resource?')) return
+
+    setLoading(true)
+    setOpenError(null)
+    try {
+      const result = await window.appBridge.deleteApi({
+        workspaceRootPath: snapshot.workspace.rootPath,
+        apiPath: api.path,
+        openapiRelativePath: api.openapiPath
+      })
+
+      if (result.status === 'error') {
+        setOpenError(result.message)
+        return
+      }
+
+      setOpenApiMenuId(null)
+      await initializeWorkspace(result.snapshot)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   function onReturnHome(): void {
     setSnapshot(null)
     setSelectedApiId(null)
@@ -1085,6 +1110,10 @@ export default function App(): React.JSX.Element {
                     } else {
                       onCreateDefaultRequest()
                     }
+                  }}
+                  onDeleteApi={() => {
+                    setOpenApiMenuId(null)
+                    void onDeleteApi(api)
                   }}
                 />
                 {editorState && selectedApiId === api.id && expandedApiId === api.id ? (

@@ -57,6 +57,12 @@ export interface CreateApiRequest {
   apiName: string
 }
 
+export interface DeleteApiRequest {
+  workspaceRootPath: string
+  apiPath: string
+  openapiRelativePath: string
+}
+
 export type OpenWorkspaceResult =
   | { status: 'cancelled' }
   | { status: 'selected'; snapshot: WorkspaceSnapshot }
@@ -81,4 +87,8 @@ export type RemoveRecentWorkspaceResult =
 
 export type CreateApiResult =
   | { status: 'created'; snapshot: WorkspaceSnapshot }
+  | { status: 'error'; message: string }
+
+export type DeleteApiResult =
+  | { status: 'deleted'; snapshot: WorkspaceSnapshot }
   | { status: 'error'; message: string }
