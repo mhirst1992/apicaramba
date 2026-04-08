@@ -226,7 +226,13 @@ async function createWorkspaceDialog(
     return { status: 'cancelled' }
   }
 
-  const workspacePath = join(parentPath, workspaceName)
+  const base = path.resolve(parentPath)
+  const target = path.resolve(base, workspaceName)
+  const relative = path.relative(base, target)
+  if (relative.startsWith('..') || path.isAbsolute(relative)) {
+    return { status: 'error', message: 'Invalid workspace name.' }
+  }
+  const workspacePath = target
 
   try {
     await fs.mkdir(workspacePath)
