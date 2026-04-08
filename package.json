@@ -30,7 +30,8 @@
       "keytar"
     ],
     "overrides": {
-      "esbuild": ">=0.25.0"
+      "esbuild": ">=0.25.0",
+      "@apidevtools/json-schema-ref-parser@<=14.0.0": "14.0.0"
     }
   }
 }
